@@ -565,3 +565,30 @@ def test_downloads_authors_endpoint_returns_top_authors(tmp_path):
         assert authors[0]["download_count"] == 2
         assert authors[1]["sec_uid"] == "sec-2"
         assert authors[1]["download_count"] == 1
+
+
+# ---------- 静态 UI 托管（长期 #1 Phase 2） ----------
+
+
+def test_static_ui_served_at_root(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+    with TestClient(app) as client:
+        resp = client.get("/")
+        assert resp.status_code == 200
+        body = resp.text
+        # 四页骨架齐备
+        for marker in ("任务中心", "下载历史", "设置", "加入队列"):
+            assert marker in body
+
+
+def test_api_routes_take_precedence_over_static_mount(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+    with TestClient(app) as client:
+        assert client.get("/api/v1/health").json() == {"status": "ok"}
+        assert client.get("/api/v1/jobs").status_code == 200
+        # 未知路径仍 404，而不是兜底回 index.html
+        assert client.get("/api/v1/nope").status_code == 404
