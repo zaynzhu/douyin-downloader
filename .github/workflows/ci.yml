@@ -14,6 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Guard — block credentials and secrets
+        run: |
+          # 红线兜底：公开仓库不得包含 Cookie/Token/密钥类真实值。
+          # 长度阈值过滤掉文档占位符（YOUR_TTWID、""）与测试短 dummy，只拦真实凭证。
+          if grep -rInE "sessionid[\":= ][A-Za-z0-9_-]{20,}|sid_guard[\":= ][A-Za-z0-9_-]{20,}|ttwid[\":= ][A-Za-z0-9._-]{30,}|passport_csrf_token[\":= ][A-Za-z0-9_-]{20,}|msToken[\":= ][A-Za-z0-9_-]{100,}|sk-[A-Za-z0-9]{20,}" \
+            --include='*.py' --include='*.md' --include='*.yml' --include='*.yaml' \
+            --include='*.json' --include='*.sh' --include='*.toml' .; then
+            echo "::error::扫描到疑似真实凭证（sessionid/ttwid/msToken/passport/sk-key），公开仓库禁止提交"
+            exit 1
+          fi
+          echo "敏感扫描通过：未发现凭证模式"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
