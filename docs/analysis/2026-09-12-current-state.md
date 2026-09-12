@@ -130,9 +130,11 @@ run.py → cli/main.py:main() → asyncio.run(main_async)
 
 ## 8. 测试与工程化
 
-- 测试：65 个文件约 593 个用例，pytest + pytest-asyncio(auto) + hypothesis(4 文件)；tests/AGENTS.md 明文要求 mock 一切外部 HTTP；基本零真实网络/Cookie 依赖。覆盖全部主要子系统。
+- 测试：65 个文件、全量 650 项（2026-09-12 实测 649 passed / 1 skipped / 18.8s），pytest + pytest-asyncio(auto) + hypothesis(4 文件)；tests/AGENTS.md 明文要求 mock 一切外部 HTTP；基本零真实网络/Cookie 依赖。覆盖全部主要子系统。
+- 本地环境事实：接手时 `.venv` **未装任何 dev 依赖**（pytest 缺失，文档命令 `PYTHONPATH=. pytest -q` 直接报 No module named pytest）；已补装 pytest 9.1.1 / pytest-asyncio 1.4.0 / ruff 0.16.7 / hypothesis 6.168.0 / fastapi 0.141.1，`ruff check .` 全绿。
+- 已修复一处 flaky：`tests/test_live_replay_remux.py::test_remux_timeout_kills_reaps_and_removes_partial_output`——事件循环停顿 ≥1s 时内外两个定时器同批唤醒、双重 cancel 同一任务，`asyncio.timeouts` 的 uncancel 簿记失配使内层 TimeoutError 不再转换（纯 asyncio 探针可确定性复现）。生产代码在该路径仍正确杀进程并回收，属测试设计脆弱：外层安全网 1.0s→5.0s 修复。
 - 测试缺口：`core/retry_executor.py` 无专属测试；浏览器兜底仅 mock 级；直播录制真实断流边界未覆盖。
-- **README 宣称有 GitHub Actions CI，实际仓库无 `.github/workflows/`**——配置缺失或未随仓库分发。
+- **README 曾宣称有 GitHub Actions CI 而仓库无 `.github/workflows/`——2026-09-12 已补最小 CI**（ruff + pytest，py3.12，与本地基线环境一致）。
 - Dockerfile（26 行）：`python:3.12-slim` 单阶段构建，**root 运行**、无 HEALTHCHECK、无 compose、不含 playwright（容器内浏览器兜底不可用）、`.dockerignore` 漏 `.venv/`/`.runtime/`/`tests/`（`COPY . .` 会把本地环境打进镜像）。能跑但工程粗糙。
 - Python 版本口径三处不一致：README 写 3.8+、AGENTS.md 要求 3.8 兼容（禁海象/match）、pyproject 声明 >=3.9、本地 venv 实为 3.12。
 - 依赖：aiohttp/aiofiles/aiosqlite/httpx/rich/pyyaml/python-dateutil/gmssl(国密 SM3/SM4)/imageio-ffmpeg==0.6.0(pin)；可选组 browser(playwright)、transcribe(openai-whisper)、server(fastapi/uvicorn/pydantic)、dev(pytest/ruff/hypothesis)。
@@ -140,7 +142,7 @@ run.py → cli/main.py:main() → asyncio.run(main_async)
 ## 9. Git 安全审计（2026-09-12 实测）
 
 - `git ls-files` 无任何敏感文件被跟踪（cookie 命名的均为正常源码）。`.cookies.json`、`config.yml`、`dy_downloader.db`、`.runtime/`、`.venv/`、`Downloaded/` 各有 `.gitignore` 精确命中规则。
-- 待办漏洞：SQLite 边车 `*.db-wal`/`*.db-shm`/`*.db-journal` 未覆盖；`config*.yaml` 与 `*.env` 未覆盖；cookie 仅按两个精确路径匹配，泛化 `*cookies*.json` 不受保护；`.gitignore` 的 `.runtime/` 改动与 `run.sh` 未提交。
+- 待办漏洞：SQLite 边车 `*.db-wal`/`*.db-shm`/`*.db-journal` 未覆盖；`config*.yaml` 与 `*.env` 未覆盖；cookie 仅按两个精确路径匹配，泛化 `*cookies*.json` 不受保护；`.gitignore` 的 `.runtime/` 改动与 `run.sh` 未提交。（**2026-09-12 已全部核销**：规则已补齐并提交，run.sh 已入库）
 
 ## 10. 文档失实清单（需在短期修复）
 
@@ -152,9 +154,21 @@ run.py → cli/main.py:main() → asyncio.run(main_async)
 | `tests/AGENTS.md` | "23 test modules" | 实际 65 |
 | README vs pyproject vs AGENTS.md | Python 3.8+ / >=3.9 / 3.8 兼容 | 口径待统一 |
 
+> **2026-09-12 当日核销**：上表 5 项已全部处理——README 中英双版声明 fork 关系、Python 统一为 3.9+、`PROJECT_SUMMARY.md` 加归档头注、`tests/AGENTS.md` 计数修正为 65、CI 已补齐；双仓同步条款同日按独立维护策略修订（CLAUDE.md / AGENTS.md，对应 roadmap D1 默认建议）。
+
 ## 11. 未验证项声明
 
-1. 未运行测试套件（报告纯静态分析；tests 声称全 mock 可离线跑，首次执行任务时应先跑一遍基线 `python -m pytest -q`）。
+1. ~~未运行测试套件~~（**已验证 2026-09-12**：649 passed / 1 skipped，修复 1 处 flaky 后稳定全绿；详见 §8 与文末更新记录）。
 2. `aweme_count` 不可靠、随机 msToken 触发风控翻页受限等结论来自代码注释与提交信息，未做线上复现。
 3. 外部项目调研仅基于各仓库 README 与公开文档，未阅读其源码（F2 的 ABogus 开源实现等结论以 README 宣称为准）。
-4. 桌面姊妹仓（douyin-downloader-desktop）本机不存在，其 schema/功能差异仅来自 AGENTS.md 自述。
+4. 桌面姊妹仓（douyin-downloader-desktop）本机不存在，其 schema/功能差异仅来自 AGENTS.md 自述。（2026-09-12：双仓同步条款已按"独立维护"修订，该路径不再是任何工作流的前提。）
+
+## 12. 更新记录
+
+| 日期 | 变更 | 对应提交 |
+|---|---|---|
+| 2026-09-12 | 初版快照（纯静态分析） | 49ae5fb 落盘 |
+| 2026-09-12 | 短期 #0 测试基线建立：补装 dev 依赖、全量 649 绿、修复 remux 用例双重取消竞态 flaky | 9f22854 |
+| 2026-09-12 | 短期 #1 git 卫生（.gitignore 边车/泛化敏感规则 + run.sh 入库） | 2b6f422、7b368e9 |
+| 2026-09-12 | 短期 #3 文档口径统一 + roadmap D1 双仓条款按默认建议修订 | d65d6b2、95b8462 |
+| 2026-09-12 | 短期 #4 最小 CI 补齐 | 249746e |
