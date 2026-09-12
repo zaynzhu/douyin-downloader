@@ -10,6 +10,7 @@ fastapi/uvicorn 是**可选**依赖。若未安装，导入本模块会 ImportEr
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -24,6 +25,9 @@ from storage import Database, FileManager
 from utils.logger import setup_logger
 
 logger = setup_logger("REST")
+
+# 静态 Web UI 目录；目录缺失时保持纯 API 模式（守卫见 build_app 末尾）
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class DownloadRequest(BaseModel):
@@ -239,6 +243,13 @@ def build_app(config: ConfigLoader) -> FastAPI:
     async def list_jobs() -> Dict[str, List[Dict[str, Any]]]:
         jobs = await manager.list_jobs()
         return {"jobs": [j.to_dict() for j in jobs]}
+
+    # 静态 UI 兜底必须放在全部 API 路由之后：Starlette 按注册顺序匹配，
+    # mount("/") 在最后才不会遮蔽 /api/v1（含未知 API 路径仍返回 404）。
+    if _STATIC_DIR.is_dir():
+        from fastapi.staticfiles import StaticFiles
+
+        app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="ui")
 
     return app
 

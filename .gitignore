@@ -43,6 +43,7 @@ dy_downloader.db
 *.sqlite-wal
 *.sqlite-shm
 .runtime/
+.playwright-mcp/
 # Local config/secrets
 config*.yml
 !config.example.yml
