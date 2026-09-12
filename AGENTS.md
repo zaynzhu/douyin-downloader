@@ -26,6 +26,7 @@ A Python-based Douyin (TikTok China) batch downloader that fetches videos, galle
 | `config/` | YAML config loading, env var overrides, defaults (see `config/AGENTS.md`) |
 | `control/` | Concurrency control — rate limiter, retry handler, queue manager (see `control/AGENTS.md`) |
 | `core/` | Business logic — API client, URL parser, downloaders, strategy pattern (see `core/AGENTS.md`) |
+| `server/` | FastAPI REST service — job queue with persistence, history endpoints, self-hosted static Web UI (see `server/AGENTS.md`) |
 | `storage/` | SQLite database, file management, metadata handling (see `storage/AGENTS.md`) |
 | `tests/` | Pytest test suite with 69 test modules (see `tests/AGENTS.md`) |
 | `tools/` | Standalone utilities like browser-based cookie fetching (see `tools/AGENTS.md`) |
