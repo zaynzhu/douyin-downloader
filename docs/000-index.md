@@ -24,6 +24,7 @@ docs/
 | `design/webui3/README.md` | 合并版原型、B1/B2/B3 处理与实测结果 | 用户视觉评审与 Phase 2 接线交接 |
 | `analysis/2026-09-12-webui-design-brief.md` | Web UI 设计任务书：自包含（定位/四页架构/API 契约/交互参考/交付物要求），交给设计方 | 设计交接用；设计产出回来后工程侧据此实现 |
 | `analysis/2026-09-12-webui-merge-plan.md` | Web UI 合并实施计划：webui2 为骨架 + webui1 正确性要素（B1 字段搜索 / B2 窄屏修复 / B3 全局态）+ 两阶段落地（webui3 原型 → server/static 接线） | Phase 1/2 执行依据；每项含现状/改法/验收 |
+| `analysis/2026-09-12-webui-phase2-handoff.md` | Phase 2 接线交接：工作区半成品盘点（RED 测试/已就位的静态骨架）、T1-T5 任务分解、接线规格与已定决策 | **执行 Phase 2 的入口文档**；自包含 |
 
 ## 使用约定
 
