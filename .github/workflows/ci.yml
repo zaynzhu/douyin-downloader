@@ -11,6 +11,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # 防 runner 挂死：2026-09-12 曾出现 7 个 run 挂 in_progress 数小时，
+    # 无超时默认要拖满 6 小时才被回收。本地全量约 25s，runner 15 分钟绰绰有余。
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
