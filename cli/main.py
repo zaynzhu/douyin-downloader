@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from auth import CookieManager
+from auth.liveness import LivenessStatus, check_cookie_liveness
 from cli.login_flow import can_interactive_login, interactive_relogin
 from cli.progress_display import ProgressDisplay
 from config import ConfigLoader
@@ -205,7 +206,7 @@ async def main_async(args):
     # 若 config 不存在且使用了 --hot-board / --search / --serve 等独立子命令，
     # 允许以默认配置运行（只要命令行提供了 --path）。
     if not Path(config_path).exists():
-        if not (args.hot_board is not None or args.search or args.serve):
+        if not (args.hot_board is not None or args.search or args.serve or args.check_auth):
             display.print_error(f"Config file not found: {config_path}")
             return
         # For ``--serve`` we still pass the (yet-missing) path so later
@@ -233,6 +234,8 @@ async def main_async(args):
             serve=False,
         )
         return
+    if args.check_auth:
+        raise SystemExit(await _run_check_auth_subcommand(config))
     if args.serve:
         await _run_serve_subcommand(args, config)
         return
@@ -256,6 +259,8 @@ async def main_async(args):
 
     if not cookie_manager.validate_cookies():
         display.print_warning("Cookies may be invalid or incomplete")
+
+    await _probe_startup_cookie(config, cookie_manager)
 
     database = None
     if config.get("database"):
@@ -365,6 +370,70 @@ async def _run_serve_subcommand(args, config: ConfigLoader) -> None:
     await run_server(config, host=args.serve_host, port=args.serve_port)
 
 
+def _has_configured_cookies(cookies: Any) -> bool:
+    """默认配置会产生全空字符串的 cookie 键，视为"未配置"。"""
+    if not cookies:
+        return False
+    return any(str(value or "").strip() for value in cookies.values())
+
+
+async def _run_check_auth_subcommand(config: ConfigLoader) -> int:
+    """--check-auth：探测当前 Cookie 活性并返回退出码（0=有效）。"""
+    cookies = config.get_cookies()
+    if not _has_configured_cookies(cookies):
+        display.print_error(
+            "未配置 Cookie，无法进行活性检查。请先运行 "
+            "python -m tools.cookie_fetcher --config config.yml 登录。"
+        )
+        return 1
+
+    async with DouyinAPIClient(cookies, proxy=config.get("proxy")) as client:
+        status, message = await check_cookie_liveness(client)
+
+    if status is LivenessStatus.ALIVE:
+        display.print_success(message)
+        return 0
+    if status is LivenessStatus.UNREACHABLE:
+        display.print_warning(message)
+    else:
+        display.print_error(message)
+    return 1
+
+
+async def _probe_startup_cookie(config: ConfigLoader, cookie_manager: CookieManager) -> None:
+    """下载主流程启动时的轻量 Cookie 活性探测，任何异常都不阻塞下载。"""
+    cookies = config.get_cookies()
+    if not _has_configured_cookies(cookies):
+        return  # 未配置 Cookie 的情况由 validate_cookies 的 warning 覆盖
+
+    try:
+        async with DouyinAPIClient(cookies, proxy=config.get("proxy")) as client:
+            status, message = await check_cookie_liveness(client)
+    except Exception as exc:  # noqa: BLE001 — 探测自身故障不应影响下载主流程
+        display.print_info(f"Cookie 活性探测失败，已跳过：{exc}")
+        return
+
+    if status is LivenessStatus.ALIVE:
+        display.print_success(message)
+        return
+    if status is LivenessStatus.UNREACHABLE:
+        display.print_info(message)
+        return
+
+    display.print_error(message)
+    if not can_interactive_login(serve=False):
+        return
+    answer = input("\n是否现在重新登录抖音？[y/N] ").strip().lower()
+    if answer not in {"y", "yes"}:
+        return
+    new_cookies = await interactive_relogin()
+    if new_cookies:
+        cookie_manager.set_cookies(new_cookies)
+        display.print_success("已更新登录态。")
+    else:
+        display.print_error("重新登录未完成，继续使用当前 Cookie。")
+
+
 async def _dispatch_notifications(config: ConfigLoader, total_result: Any, url_count: int) -> None:
     notifier = build_notifier(config)
     if not notifier.enabled:
@@ -426,6 +495,11 @@ def main():
         type=int,
         default=50,
         help="--search 场景下最多拉取条数（默认 50）",
+    )
+    parser.add_argument(
+        "--check-auth",
+        action="store_true",
+        help="检查当前 Cookie 是否有效后退出（退出码 0=有效）",
     )
     parser.add_argument(
         "--serve",

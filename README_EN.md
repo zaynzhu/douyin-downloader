@@ -353,6 +353,7 @@ python run.py -c config.yml \
 | `--hot-board [N]` | Dump the hot search board as JSONL, optional top-N |
 | `--search KEYWORD` | Search videos by keyword, output JSONL |
 | `--search-max N` | Max items for `--search` (default 50) |
+| `--check-auth` | Probe whether the current cookie is still logged in, then exit (exit code 0 = alive); no download runs |
 | `--serve` | Run as REST API server (requires fastapi, uvicorn) |
 | `--serve-host HOST` | REST server listen host (default 127.0.0.1) |
 | `--serve-port PORT` | REST server listen port (default 8000) |

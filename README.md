@@ -352,6 +352,7 @@ python run.py -c config.yml \
 | `--hot-board [N]` | 导出抖音热搜榜 JSONL，可选 top-N |
 | `--search KEYWORD` | 关键词搜索视频，输出 JSONL |
 | `--search-max N` | `--search` 的最大条数（默认 50） |
+| `--check-auth` | 探测当前 Cookie 是否有效后退出（退出码 0=有效），不执行下载 |
 | `--serve` | 以 REST API 服务运行（需安装 fastapi、uvicorn） |
 | `--serve-host HOST` | REST 服务监听地址（默认 127.0.0.1） |
 | `--serve-port PORT` | REST 服务监听端口（默认 8000） |

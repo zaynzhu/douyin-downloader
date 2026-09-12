@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-27 | Updated: 2026-03-27 -->
+<!-- Generated: 2026-03-27 | Updated: 2026-09-12 -->
 
 # auth
 
 ## Purpose
-Manages Douyin authentication credentials — cookie storage/validation and MS token generation for API request signing.
+Manages Douyin authentication credentials — cookie storage/validation, liveness probing, and MS token generation for API request signing.
 
 ## Key Files
 
@@ -12,6 +12,7 @@ Manages Douyin authentication credentials — cookie storage/validation and MS t
 |------|-------------|
 | `__init__.py` | Exports `CookieManager`, `MsTokenManager` |
 | `cookie_manager.py` | Stores, validates, and serves cookies as dict or header string |
+| `liveness.py` | One-request login liveness probe (`check_cookie_liveness`): ALIVE / INVALID / UNREACHABLE, never raises |
 | `ms_token_manager.py` | Generates/refreshes the `msToken` required by Douyin API endpoints |
 
 ## For AI Agents
@@ -22,7 +23,7 @@ Manages Douyin authentication credentials — cookie storage/validation and MS t
 - `MsTokenManager` is used by `core/api_client.py` for request signing
 
 ### Testing Requirements
-- Tests: `tests/test_cookie_manager.py`, `tests/test_ms_token_manager.py`
+- Tests: `tests/test_cookie_manager.py`, `tests/test_ms_token_manager.py`, `tests/test_cookie_liveness.py`, `tests/test_check_auth.py` (CLI wiring)
 
 ### Common Patterns
 - Cookie validation checks for required Douyin cookie keys
