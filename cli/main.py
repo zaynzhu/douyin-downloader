@@ -151,6 +151,10 @@ async def download_url(
             progress_reporter.advance_step("执行下载", "开始拉取与下载资源")
         try:
             result = await downloader.download(parsed)
+        except LoginRequiredError:
+            # 必须穿透 download_url 上抛给 _run_with_relogin，自动重登才有效；
+            # 掉进下面那个宽泛 except 的话，重登就成了永远收不到信号的死代码。
+            raise
         except Exception as exc:
             # Surface fatal downloader errors (e.g. user_info fetch failed
             # because cookies are invalid) as a per-URL failure instead of

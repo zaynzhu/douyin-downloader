@@ -168,3 +168,41 @@ async def test_download_url_gates_lvdetail_before_building_a_downloader(monkeypa
     assert result is None
     assert created == []
     assert errors == [main_module.UNSUPPORTED_URL_TYPE_DETAIL["lvdetail"]]
+
+
+@pytest.mark.asyncio
+async def test_download_url_propagates_login_required_for_relogin(monkeypatch, tmp_path):
+    """主下载链路的 LoginRequiredError 必须上抛给 _run_with_relogin。
+
+    cli.main 里精心实现的自动重登（_run_with_relogin 包着整个 URL 批处理
+    循环）依赖这个异常穿透；一旦被 download_url 的宽泛 except Exception
+    吞掉，登录失效就只会打印一条 "Download failed" 而永远不会触发重登。
+    """
+    config = main_module.ConfigLoader()
+    config.update(path=str(tmp_path))
+
+    monkeypatch.setattr(main_module, "DouyinAPIClient", _FakeAPIClient)
+    monkeypatch.setattr(
+        main_module.URLParser,
+        "parse",
+        lambda _url: {"type": "video", "aweme_id": "7604129988555574538"},
+    )
+
+    class _LoginRequiredDownloader:
+        async def download(self, parsed):
+            raise main_module.LoginRequiredError(2483, "请先登录", "/aweme/v1/web/post/")
+
+    monkeypatch.setattr(
+        main_module.DownloaderFactory,
+        "create",
+        lambda *_args, **_kwargs: _LoginRequiredDownloader(),
+    )
+
+    with pytest.raises(main_module.LoginRequiredError):
+        await main_module.download_url(
+            "https://www.douyin.com/video/7604129988555574538",
+            config,
+            _FakeCookieManager(),
+            database=None,
+            progress_reporter=None,
+        )
