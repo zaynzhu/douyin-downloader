@@ -192,6 +192,49 @@ def build_app(config: ConfigLoader) -> FastAPI:
         new_job = await manager.submit(job.url)
         return JobResponse(job_id=new_job.job_id, status=new_job.status, url=new_job.url)
 
+    @app.get("/api/v1/downloads")
+    async def list_downloads(
+        page: int = 1,
+        size: int = 50,
+        author: Optional[str] = None,
+        author_sec_uid: Optional[str] = None,
+        job_id: Optional[str] = None,
+        aweme_type: Optional[str] = None,
+        title: Optional[str] = None,
+        date_from: Optional[int] = None,
+        date_to: Optional[int] = None,
+        sort: str = "download_time",
+    ) -> Dict[str, Any]:
+        """分页查询下载历史，直接包装 Database.get_aweme_history。
+
+        ``date_from`` / ``date_to`` 为 unix 秒（按作品发布时间 create_time 过滤）；
+        ``author`` / ``title`` 为大小写不敏感子串匹配。
+        """
+        if deps.database is None:
+            raise HTTPException(status_code=409, detail="database is not enabled")
+        return await deps.database.get_aweme_history(
+            page=max(1, page),
+            size=min(200, max(1, size)),
+            author=author or None,
+            author_sec_uid=author_sec_uid or None,
+            job_id=job_id or None,
+            aweme_type=aweme_type or None,
+            title=title or None,
+            date_from=date_from,
+            date_to=date_to,
+            sort=sort,
+        )
+
+    @app.get("/api/v1/downloads/authors")
+    async def top_authors(days: int = 30, limit: int = 20) -> Dict[str, Any]:
+        """近 N 天下载量 Top 作者，包装 Database.get_top_authors。"""
+        if deps.database is None:
+            raise HTTPException(status_code=409, detail="database is not enabled")
+        authors = await deps.database.get_top_authors(
+            days=max(1, days), limit=min(100, max(1, limit))
+        )
+        return {"authors": authors}
+
     @app.get("/api/v1/jobs")
     async def list_jobs() -> Dict[str, List[Dict[str, Any]]]:
         jobs = await manager.list_jobs()

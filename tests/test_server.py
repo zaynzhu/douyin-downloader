@@ -438,3 +438,130 @@ def test_build_app_initializes_database_when_enabled(tmp_path):
     app = build_app(config)
     with TestClient(app):
         assert app.state.deps.database is not None
+
+
+# ---------- 历史查询端点（中期 #3） ----------
+
+
+def _history_row(
+    aweme_id: str,
+    *,
+    author: str = "作者甲",
+    sec_uid: str = "sec-1",
+    aweme_type: str = "video",
+    file_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    if file_path is None:
+        file_path = f"Downloaded/{author}/{aweme_id}.mp4"
+    return {
+        "aweme_id": aweme_id,
+        "aweme_type": aweme_type,
+        "title": f"作品{aweme_id}",
+        "author_id": f"aid-{sec_uid}",
+        "author_name": author,
+        "author_sec_uid": sec_uid,
+        "create_time": int(time.time()),
+        "file_path": file_path,
+    }
+
+
+def _seed_history_db(db_path, rows) -> None:
+    from storage import Database
+
+    async def _seed():
+        db = Database(db_path=str(db_path))
+        await db.initialize()
+        for row in rows:
+            await db.add_aweme(row)
+        await db.close()
+
+    asyncio.run(_seed())
+
+
+def _history_app(tmp_path, rows):
+    db_path = tmp_path / "history.db"
+    if rows:
+        _seed_history_db(db_path, rows)
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=True, database_path=str(db_path))
+    return build_app(config)
+
+
+def test_downloads_endpoint_requires_database(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/downloads")
+        assert resp.status_code == 409
+
+
+def test_downloads_endpoint_returns_paginated_history(tmp_path):
+    rows = [
+        _history_row("7001"),
+        _history_row("7002"),
+        _history_row("7003", author="作者乙", sec_uid="sec-2"),
+    ]
+    app = _history_app(tmp_path, rows)
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/downloads")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 3
+        assert body["page"] == 1 and body["size"] == 50
+        assert {item["aweme_id"] for item in body["items"]} == {"7001", "7002", "7003"}
+        first = body["items"][0]
+        for key in ("aweme_id", "aweme_type", "title", "author_name", "file_path"):
+            assert key in first
+
+
+def test_downloads_endpoint_pagination(tmp_path):
+    rows = [_history_row(f"70{i:02d}") for i in range(1, 4)]
+    app = _history_app(tmp_path, rows)
+    with TestClient(app) as client:
+        page1 = client.get("/api/v1/downloads", params={"size": 2, "page": 1}).json()
+        page2 = client.get("/api/v1/downloads", params={"size": 2, "page": 2}).json()
+        assert page1["total"] == 3 and len(page1["items"]) == 2
+        assert page2["total"] == 3 and len(page2["items"]) == 1
+
+
+def test_downloads_endpoint_filters_by_author(tmp_path):
+    rows = [
+        _history_row("7001", author="作者甲"),
+        _history_row("7002", author="作者甲"),
+        _history_row("7003", author="作者乙", sec_uid="sec-2"),
+    ]
+    app = _history_app(tmp_path, rows)
+    with TestClient(app) as client:
+        body = client.get("/api/v1/downloads", params={"author": "作者乙"}).json()
+        assert body["total"] == 1
+        assert body["items"][0]["aweme_id"] == "7003"
+
+        body_all = client.get("/api/v1/downloads", params={"author": "作者"}).json()
+        assert body_all["total"] == 3  # 子串匹配，两个作者都命中
+
+
+def test_downloads_authors_endpoint_requires_database(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/downloads/authors")
+        assert resp.status_code == 409
+
+
+def test_downloads_authors_endpoint_returns_top_authors(tmp_path):
+    rows = [
+        _history_row("7001", author="作者甲", sec_uid="sec-1"),
+        _history_row("7002", author="作者甲", sec_uid="sec-1"),
+        _history_row("7003", author="作者乙", sec_uid="sec-2"),
+    ]
+    app = _history_app(tmp_path, rows)
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/downloads/authors", params={"days": 30, "limit": 10})
+        assert resp.status_code == 200
+        authors = resp.json()["authors"]
+        assert authors[0]["sec_uid"] == "sec-1"
+        assert authors[0]["download_count"] == 2
+        assert authors[1]["sec_uid"] == "sec-2"
+        assert authors[1]["download_count"] == 1
