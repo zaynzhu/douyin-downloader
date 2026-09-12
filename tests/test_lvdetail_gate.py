@@ -16,6 +16,7 @@ import pytest
 
 from config import ConfigLoader
 from core import UNSUPPORTED_URL_TYPE_DETAIL, DownloaderFactory
+from core.download_service import DownloadError
 from server.app import _execute_download, _ServerDeps
 
 LVDETAIL_URL = (
@@ -58,7 +59,7 @@ def test_execute_download_raises_the_real_reason(monkeypatch, tmp_path):
         DownloaderFactory, "create", staticmethod(lambda *a, **kw: created.append(a) or None)
     )
 
-    with pytest.raises(RuntimeError, match="放映厅"):
+    with pytest.raises(DownloadError, match="放映厅"):
         asyncio.run(_execute_download(LVDETAIL_URL, deps))
 
     assert created == []

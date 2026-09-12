@@ -52,22 +52,23 @@ class _FakeDownloader:
 
 
 def _run_execute_download(monkeypatch, tmp_path, config_updates: Dict[str, Any]):
-    from server import app as server_app
+    from core import download_service as ds
     from server.app import _execute_download, _ServerDeps
 
     deps = _ServerDeps(ConfigLoader(None))
     deps.config.update(path=str(tmp_path), **config_updates)
 
     _RecordingAPIClient.reset()
-    monkeypatch.setattr(server_app, "DouyinAPIClient", _RecordingAPIClient)
-    monkeypatch.setattr(server_app, "is_short_url", lambda _u: False)
+    # 编排收敛后，客户端/短链/解析/工厂的边界都落在 core.download_service
+    monkeypatch.setattr(ds, "DouyinAPIClient", _RecordingAPIClient)
+    monkeypatch.setattr(ds, "is_short_url", lambda _u: False)
     monkeypatch.setattr(
-        server_app.URLParser,
+        ds.URLParser,
         "parse",
         staticmethod(lambda _u: {"type": "video", "aweme_id": "1"}),
     )
     monkeypatch.setattr(
-        server_app.DownloaderFactory,
+        ds.DownloaderFactory,
         "create",
         staticmethod(lambda *_a, **_kw: _FakeDownloader()),
     )

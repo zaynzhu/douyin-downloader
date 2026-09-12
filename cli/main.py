@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
@@ -12,17 +11,11 @@ from cli.login_flow import can_interactive_login, interactive_relogin
 from cli.progress_display import ProgressDisplay
 from config import ConfigLoader
 from control import QueueManager, RateLimiter, RetryHandler
-from core import (
-    UNSUPPORTED_URL_TYPE_DETAIL,
-    DouyinAPIClient,
-    DownloaderFactory,
-    LoginRequiredError,
-    URLParser,
-)
+from core import DouyinAPIClient, LoginRequiredError
+from core.download_service import DownloadError, DownloadService
 from storage import Database, FileManager
 from utils.logger import set_console_log_level, setup_logger
 from utils.notifier import build_notifier
-from utils.validators import is_short_url, normalize_short_url
 
 logger = setup_logger("CLI")
 display = ProgressDisplay()
@@ -80,6 +73,12 @@ async def download_url(
     database: Database = None,
     progress_reporter: ProgressDisplay = None,
 ):
+    """CLI 编排薄壳：组装 per-URL 依赖，委托 core.download_service 执行。
+
+    DownloadError 转终端提示 + None，保持多 URL 批处理韧性；
+    LoginRequiredError 不在此捕获——批处理循环里的 _run_with_relogin
+    包着本函数，靠它触发自动重登。
+    """
     if progress_reporter:
         progress_reporter.advance_step("初始化", "创建下载组件")
     file_manager = FileManager(config.get("path"))
@@ -87,115 +86,22 @@ async def download_url(
     retry_handler = RetryHandler(max_retries=config.get("retry_times", 3))
     queue_manager = QueueManager(max_workers=int(config.get("thread", 5) or 5))
 
-    original_url = url
-
-    async with DouyinAPIClient(
-        cookie_manager.get_cookies(),
-        proxy=config.get("proxy"),
-    ) as api_client:
-        if progress_reporter:
-            progress_reporter.advance_step("解析链接", "检查短链并解析 URL")
-        # 支持多种短链变体：v.douyin.com / v.iesdouyin.com / 无 scheme 的裸链接
-        if is_short_url(url):
-            resolved_url = await api_client.resolve_short_url(normalize_short_url(url))
-            if resolved_url:
-                url = resolved_url
-            else:
-                if progress_reporter:
-                    progress_reporter.update_step("解析链接", "短链解析失败")
-                display.print_error(f"Failed to resolve short URL: {url}")
-                return None
-
-        parsed = URLParser.parse(url)
-        if not parsed:
-            if progress_reporter:
-                progress_reporter.update_step("解析链接", "URL 解析失败")
-            display.print_error(f"Failed to parse URL: {url}")
-            return None
-
-        # 能力门禁：这些类型解析得出来，但永远不会有下载器（见
-        # core.downloader_factory.UNSUPPORTED_URL_TYPE_DETAIL）。在建下载器之前
-        # 拦，用户才能看到真实原因而不是 "No downloader found for type: ..."。
-        gated_detail = UNSUPPORTED_URL_TYPE_DETAIL.get(str(parsed.get("type") or ""))
-        if gated_detail:
-            if progress_reporter:
-                progress_reporter.update_step("解析链接", gated_detail)
-            display.print_error(gated_detail)
-            return None
-
-        if not progress_reporter:
-            display.print_info(f"URL type: {parsed['type']}")
-        if progress_reporter:
-            progress_reporter.advance_step("创建下载器", f"URL 类型: {parsed['type']}")
-
-        downloader = DownloaderFactory.create(
-            parsed["type"],
-            config,
-            api_client,
-            file_manager,
-            cookie_manager,
-            database,
-            rate_limiter,
-            retry_handler,
-            queue_manager,
-            progress_reporter=progress_reporter,
-        )
-
-        if not downloader:
-            if progress_reporter:
-                progress_reporter.update_step("创建下载器", "未找到匹配下载器")
-            display.print_error(f"No downloader found for type: {parsed['type']}")
-            return None
-
-        if progress_reporter:
-            progress_reporter.advance_step("执行下载", "开始拉取与下载资源")
-        try:
-            result = await downloader.download(parsed)
-        except LoginRequiredError:
-            # 必须穿透 download_url 上抛给 _run_with_relogin，自动重登才有效；
-            # 掉进下面那个宽泛 except 的话，重登就成了永远收不到信号的死代码。
-            raise
-        except Exception as exc:
-            # Surface fatal downloader errors (e.g. user_info fetch failed
-            # because cookies are invalid) as a per-URL failure instead of
-            # crashing the whole batch. Keeps multi-URL CLI runs robust while
-            # still telling the user why the URL was skipped.
-            if progress_reporter:
-                progress_reporter.update_step("执行下载", f"失败：{exc}")
-            display.print_error(f"Download failed for {url}: {exc}")
-            return None
-
-        if progress_reporter:
-            progress_reporter.advance_step(
-                "记录历史",
-                "写入数据库历史" if (result and database) else "数据库未启用，跳过",
-            )
-        if result and database:
-            safe_config = {
-                k: v
-                for k, v in config.config.items()
-                if k not in ("cookies", "cookie", "transcript")
-            }
-            await database.add_history(
-                {
-                    "url": original_url,
-                    "url_type": parsed["type"],
-                    "total_count": result.total,
-                    "success_count": result.success,
-                    "config": json.dumps(safe_config, ensure_ascii=False),
-                }
-            )
-
-        if progress_reporter:
-            if result:
-                progress_reporter.advance_step(
-                    "收尾",
-                    f"成功 {result.success} / 失败 {result.failed} / 跳过 {result.skipped}",
-                )
-            else:
-                progress_reporter.advance_step("收尾", "无可统计结果")
-
-        return result
+    service = DownloadService(
+        config=config,
+        cookie_manager=cookie_manager,
+        file_manager=file_manager,
+        rate_limiter=rate_limiter,
+        retry_handler=retry_handler,
+        queue_manager=queue_manager,
+        database=database,
+        progress_reporter=progress_reporter,
+        info=display.print_info,
+    )
+    try:
+        return await service.run(url)
+    except DownloadError as exc:
+        display.print_error(str(exc))
+        return None
 
 
 async def main_async(args):

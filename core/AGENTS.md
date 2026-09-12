@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-27 | Updated: 2026-03-27 -->
+<!-- Generated: 2026-03-27 | Updated: 2026-09-12 -->
 
 # core
 
@@ -11,6 +11,7 @@ Core business logic — Douyin API client, URL parsing, download orchestration, 
 | File | Description |
 |------|-------------|
 | `__init__.py` | Exports `DouyinAPIClient`, `URLParser`, `DownloaderFactory`, `MixDownloader`, `MusicDownloader` |
+| `download_service.py` | Unified download orchestration (short-link → parse → gate → factory → download → history); CLI and REST are thin shells over `DownloadService.run()` |
 | `api_client.py` | Async HTTP client for Douyin API — fetches video details, user posts, mix lists, music |
 | `url_parser.py` | Regex-based URL classifier — detects video, user, gallery, collection, music URL types |
 | `downloader_base.py` | `BaseDownloader` ABC and `DownloadResult` dataclass — shared download logic |

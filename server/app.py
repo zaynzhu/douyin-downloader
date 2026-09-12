@@ -2,7 +2,7 @@
 
 HTTP 层薄封装：
 - 接收 URL，创建 job，返回 job_id
-- 实际下载委托给 cli.main.download_url 的简化复用
+- 实际下载委托给 core.download_service.DownloadService（与 CLI 共用同一编排）
 
 fastapi/uvicorn 是**可选**依赖。若未安装，导入本模块会 ImportError。
 """
@@ -18,11 +18,10 @@ from pydantic import BaseModel
 from auth import CookieManager
 from config import ConfigLoader
 from control import QueueManager, RateLimiter, RetryHandler
-from core import UNSUPPORTED_URL_TYPE_DETAIL, DouyinAPIClient, DownloaderFactory, URLParser
+from core.download_service import DownloadService
 from server.jobs import JobManager
 from storage import FileManager
 from utils.logger import setup_logger
-from utils.validators import is_short_url, normalize_short_url
 
 logger = setup_logger("REST")
 
@@ -76,54 +75,27 @@ class _ServerDeps:
 
 
 async def _execute_download(url: str, deps: "_ServerDeps") -> Dict[str, int]:
-    """简化版 download_url：只负责执行并返回成功/失败计数。
+    """REST 编排薄壳：复用 _ServerDeps 的共享依赖，委托 DownloadService 执行。
 
-    有意不复用 cli.main.download_url —— 后者绑定了 progress_display 的 rich 状态。
-    API client 仍按请求创建（aiohttp session 不跨请求复用）；其余重量级依赖从
-    _ServerDeps 共享。
+    DownloadError / LoginRequiredError 直接上抛，由 JobManager 落为
+    job.error；database 暂不接线（任务持久化是路线图中期 #2 的事）。
     """
-    # proxy 与 cli.main.download_url 对齐:API 请求、短链解析和 CDN 媒体
-    # 下载(downloader_base 读 api_client.proxy)统一走配置代理。
-    async with DouyinAPIClient(
-        deps.cookie_manager.get_cookies(),
-        proxy=deps.config.get("proxy"),
-    ) as api_client:
-        if is_short_url(url):
-            resolved = await api_client.resolve_short_url(normalize_short_url(url))
-            if not resolved:
-                raise RuntimeError(f"Failed to resolve short URL: {url}")
-            url = resolved
-
-        parsed = URLParser.parse(url)
-        if not parsed:
-            raise RuntimeError(f"Unsupported URL: {url}")
-        # 能力门禁：解析得出来但永远不会有下载器的类型，给出真实原因。
-        gated_detail = UNSUPPORTED_URL_TYPE_DETAIL.get(str(parsed.get("type") or ""))
-        if gated_detail:
-            raise RuntimeError(gated_detail)
-
-        downloader = DownloaderFactory.create(
-            parsed["type"],
-            deps.config,
-            api_client,
-            deps.file_manager,
-            deps.cookie_manager,
-            None,  # database 不在 server 场景里启用，避免单例冲突
-            deps.rate_limiter,
-            deps.retry_handler,
-            deps.queue_manager,
-            progress_reporter=None,
-        )
-        if downloader is None:
-            raise RuntimeError(f"No downloader for url_type={parsed['type']}")
-
-        result = await downloader.download(parsed)
-        return {
-            "total": result.total,
-            "success": result.success,
-            "failed": result.failed,
-            "skipped": result.skipped,
-        }
+    service = DownloadService(
+        config=deps.config,
+        cookie_manager=deps.cookie_manager,
+        file_manager=deps.file_manager,
+        rate_limiter=deps.rate_limiter,
+        retry_handler=deps.retry_handler,
+        queue_manager=deps.queue_manager,
+        database=None,
+    )
+    result = await service.run(url)
+    return {
+        "total": result.total,
+        "success": result.success,
+        "failed": result.failed,
+        "skipped": result.skipped,
+    }
 
 
 def build_app(config: ConfigLoader) -> FastAPI:

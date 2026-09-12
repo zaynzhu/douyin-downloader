@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import pytest
 
 main_module = importlib.import_module("cli.main")
+# 下载编排收敛到 core.download_service 后，网络/工厂边界桩打在 service 命名空间
+ds = importlib.import_module("core.download_service")
 
 
 class _FakeCookieManager:
@@ -45,10 +47,10 @@ async def test_download_url_resolves_short_link_before_parsing(monkeypatch, tmp_
 
     fake_downloader = _FakeDownloader()
 
-    monkeypatch.setattr(main_module, "DouyinAPIClient", _FakeAPIClient)
-    monkeypatch.setattr(main_module.URLParser, "parse", _fake_parse)
+    monkeypatch.setattr(ds, "DouyinAPIClient", _FakeAPIClient)
+    monkeypatch.setattr(ds.URLParser, "parse", _fake_parse)
     monkeypatch.setattr(
-        main_module.DownloaderFactory,
+        ds.DownloaderFactory,
         "create",
         lambda *_args, **_kwargs: fake_downloader,
     )
@@ -79,14 +81,14 @@ async def test_download_url_passes_proxy_to_api_client(monkeypatch, tmp_path):
             captured["proxy"] = proxy
             super().__init__(cookies, proxy=proxy)
 
-    monkeypatch.setattr(main_module, "DouyinAPIClient", _ProxyAPIClient)
+    monkeypatch.setattr(ds, "DouyinAPIClient", _ProxyAPIClient)
     monkeypatch.setattr(
-        main_module.URLParser,
+        ds.URLParser,
         "parse",
         lambda _url: {"type": "video", "aweme_id": "7604129988555574538"},
     )
     monkeypatch.setattr(
-        main_module.DownloaderFactory,
+        ds.DownloaderFactory,
         "create",
         lambda *_args, **_kwargs: _FakeDownloader(),
     )
@@ -126,6 +128,7 @@ async def test_discovery_subcommand_passes_proxy_to_api_client(monkeypatch, tmp_
 
     from core import discovery
 
+    # discovery 子命令仍在 cli.main 内直接构造客户端（不走 DownloadService）
     monkeypatch.setattr(main_module, "DouyinAPIClient", _ProxyAPIClient)
     monkeypatch.setattr(discovery, "dump_hot_board", _fake_dump_hot_board)
 
@@ -149,9 +152,9 @@ async def test_download_url_gates_lvdetail_before_building_a_downloader(monkeypa
     created = []
     errors = []
 
-    monkeypatch.setattr(main_module, "DouyinAPIClient", _FakeAPIClient)
+    monkeypatch.setattr(ds, "DouyinAPIClient", _FakeAPIClient)
     monkeypatch.setattr(
-        main_module.DownloaderFactory,
+        ds.DownloaderFactory,
         "create",
         lambda *a, **kw: created.append(a) or None,
     )
@@ -167,7 +170,7 @@ async def test_download_url_gates_lvdetail_before_building_a_downloader(monkeypa
 
     assert result is None
     assert created == []
-    assert errors == [main_module.UNSUPPORTED_URL_TYPE_DETAIL["lvdetail"]]
+    assert errors == [ds.UNSUPPORTED_URL_TYPE_DETAIL["lvdetail"]]
 
 
 @pytest.mark.asyncio
@@ -181,9 +184,9 @@ async def test_download_url_propagates_login_required_for_relogin(monkeypatch, t
     config = main_module.ConfigLoader()
     config.update(path=str(tmp_path))
 
-    monkeypatch.setattr(main_module, "DouyinAPIClient", _FakeAPIClient)
+    monkeypatch.setattr(ds, "DouyinAPIClient", _FakeAPIClient)
     monkeypatch.setattr(
-        main_module.URLParser,
+        ds.URLParser,
         "parse",
         lambda _url: {"type": "video", "aweme_id": "7604129988555574538"},
     )
@@ -193,7 +196,7 @@ async def test_download_url_propagates_login_required_for_relogin(monkeypatch, t
             raise main_module.LoginRequiredError(2483, "请先登录", "/aweme/v1/web/post/")
 
     monkeypatch.setattr(
-        main_module.DownloaderFactory,
+        ds.DownloaderFactory,
         "create",
         lambda *_args, **_kwargs: _LoginRequiredDownloader(),
     )
