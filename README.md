@@ -372,9 +372,11 @@ python run.py --serve --serve-port 8000
 | POST | `/api/v1/download` | 提交 `{"url": "..."}`，返回 `{job_id, status}` |
 | GET | `/api/v1/jobs/{job_id}` | 查询单个任务状态与计数 |
 | GET | `/api/v1/jobs` | 列出近期任务（受 TTL 与容量上限约束） |
+| POST | `/api/v1/jobs/{job_id}/cancel` | 取消未完成任务（终态任务返回 409） |
+| POST | `/api/v1/jobs/{job_id}/retry` | 用原 URL 提交新任务重试（磁盘增量保证幂等），返回 201 |
 | GET | `/api/v1/health` | 健康检查 |
 
-已结束任务按 TTL（默认 24h）与最大任务数（默认 500）清理，进行中任务永不清理。通过 `server.max_jobs` / `server.job_ttl_seconds` 调整。
+`database: true` 时，终态任务（success / failed / cancelled）持久化到 SQLite 的 `job` 表，服务重启后仍可查询；API 任务同时写入 `aweme` / `download_history` 并与 job 关联。内存中的任务列表仍按 TTL（默认 24h）与最大任务数（默认 500）清理，进行中任务永不清理，通过 `server.max_jobs` / `server.job_ttl_seconds` 调整。
 
 ---
 

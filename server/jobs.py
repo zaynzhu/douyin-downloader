@@ -1,6 +1,8 @@
 """纯 Python 的后台下载任务模型，不依赖 FastAPI。
 
 将 job 生命周期从 HTTP 层解耦，便于被 CLI 以外的入口复用（如未来的 MCP server）。
+传入可选的 ``database``（实现了 ``upsert_job`` / ``load_terminal_jobs``）即可获得
+终态持久化与重启恢复；持久化故障只记日志，绝不影响任务执行流程。
 """
 
 from __future__ import annotations
@@ -10,6 +12,10 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from utils.logger import setup_logger
+
+logger = setup_logger("JobManager")
 
 
 def _now_iso() -> str:
@@ -22,8 +28,9 @@ class JobStatus:
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
-    TERMINAL = frozenset({SUCCESS, FAILED})
+    TERMINAL = frozenset({SUCCESS, FAILED, CANCELLED})
 
 
 class DownloadJob:
@@ -62,8 +69,8 @@ class DownloadJob:
 class JobManager:
     """内存 job 存储 + 并发执行器，带 TTL + 容量上限。
 
-    不做持久化——进程重启就丢失——因为当前目标只是暴露 HTTP 接口。
-    如需持久化可以后续在此加一层 SQLite。
+    传入 ``database``（默认 None 保持纯内存行为）后，终态任务会写入
+    SQLite 的 ``job`` 表，且可用 :py:meth:`load_persisted` 在重启后恢复。
 
     剪裁策略：
     - 每次 submit 前先剪裁一次：
@@ -77,11 +84,12 @@ class JobManager:
 
     def __init__(
         self,
-        executor: Callable[[str], Awaitable[Dict[str, int]]],
+        executor: Callable[..., Awaitable[Dict[str, int]]],
         *,
         max_concurrency: int = 2,
         max_jobs: int = DEFAULT_MAX_JOBS,
         job_ttl_seconds: float = DEFAULT_JOB_TTL_SECONDS,
+        database: Any = None,
     ):
         self.executor = executor
         self._jobs: Dict[str, DownloadJob] = {}
@@ -89,6 +97,7 @@ class JobManager:
         self._lock = asyncio.Lock()
         self.max_jobs = max(1, int(max_jobs))
         self.job_ttl_seconds = max(0.0, float(job_ttl_seconds))
+        self.database = database
 
     async def submit(self, url: str) -> DownloadJob:
         job_id = uuid.uuid4().hex[:12]
@@ -134,19 +143,81 @@ class JobManager:
             job.status = JobStatus.RUNNING
             job.started_at = _now_iso()
             try:
-                counts = await self.executor(job.url)
+                counts = await self.executor(job.url, job_id=job.job_id)
                 job.total = int(counts.get("total", 0))
                 job.success = int(counts.get("success", 0))
                 job.failed = int(counts.get("failed", 0))
                 job.skipped = int(counts.get("skipped", 0))
                 # 只要跑完就是 success；具体成功/失败个数通过字段区分
                 job.status = JobStatus.SUCCESS if job.failed == 0 else JobStatus.FAILED
+            except asyncio.CancelledError:
+                # cancel() 触发：任务语义在这里终结（不再重抛），状态交给持久化
+                job.status = JobStatus.CANCELLED
             except Exception as exc:
                 job.status = JobStatus.FAILED
                 job.error = f"{type(exc).__name__}: {exc}"
             finally:
                 job.finished_at = _now_iso()
                 job.finished_monotonic = time.monotonic()
+                await self._persist(job)
+
+    async def _persist(self, job: DownloadJob) -> None:
+        """终态落库；持久化故障只记日志，绝不影响任务流程。"""
+        if self.database is None or job.status not in JobStatus.TERMINAL:
+            return
+        try:
+            await self.database.upsert_job(job.to_dict())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Persist job %s failed: %s", job.job_id, exc)
+
+    async def cancel(self, job_id: str) -> Optional[DownloadJob]:
+        """请求取消一个未完成任务；未知 id 返回 None，终态任务原样返回。"""
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if (
+                job.status not in JobStatus.TERMINAL
+                and job._task is not None
+                and not job._task.done()
+            ):
+                job._task.cancel()
+            return job
+
+    async def load_persisted(self, limit: Optional[int] = None) -> int:
+        """启动时从数据库恢复最近的终态任务，返回恢复条数。
+
+        磁盘上的 running/pending 行由 ``load_terminal_jobs`` 过滤——进程
+        已死，那种行只可能是旧构建遗留的脏数据。恢复的终态任务按"刚结束"
+        参与此后的 TTL 剪裁。
+        """
+        if self.database is None:
+            return 0
+        try:
+            rows = await self.database.load_terminal_jobs(limit)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Load persisted jobs failed: %s", exc)
+            return 0
+        restored = 0
+        async with self._lock:
+            for row in rows:
+                job_id = str(row.get("job_id") or "")
+                if not job_id or job_id in self._jobs:
+                    continue
+                job = DownloadJob(job_id=job_id, url=str(row.get("url") or ""))
+                job.status = str(row.get("status") or JobStatus.FAILED)
+                job.created_at = str(row.get("created_at") or _now_iso())
+                job.started_at = row.get("started_at")
+                job.finished_at = row.get("finished_at")
+                job.total = int(row.get("total") or 0)
+                job.success = int(row.get("success") or 0)
+                job.failed = int(row.get("failed") or 0)
+                job.skipped = int(row.get("skipped") or 0)
+                job.error = row.get("error")
+                job.finished_monotonic = time.monotonic()
+                self._jobs[job_id] = job
+                restored += 1
+        return restored
 
     async def get(self, job_id: str) -> Optional[DownloadJob]:
         async with self._lock:

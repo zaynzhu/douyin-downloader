@@ -373,9 +373,11 @@ python run.py --serve --serve-port 8000
 | POST | `/api/v1/download` | Submit `{"url": "..."}`, returns `{job_id, status}` |
 | GET | `/api/v1/jobs/{job_id}` | Get a job's status/counts |
 | GET | `/api/v1/jobs` | List recent jobs (TTL + capacity capped) |
+| POST | `/api/v1/jobs/{job_id}/cancel` | Cancel an in-flight job (terminal jobs return 409) |
+| POST | `/api/v1/jobs/{job_id}/retry` | Resubmit the original URL as a new job (disk-based incremental makes it idempotent); returns 201 |
 | GET | `/api/v1/health` | Health probe |
 
-Finished jobs are pruned by TTL (default 24h) and max-jobs (default 500) — in-flight jobs are never pruned. Configure via `server.max_jobs` / `server.job_ttl_seconds`.
+With `database: true`, terminal jobs (success / failed / cancelled) are persisted to the SQLite `job` table and survive server restarts; API jobs also write `aweme` / `download_history` rows linked to the job. The in-memory job list is still pruned by TTL (default 24h) and max-jobs (default 500) — in-flight jobs are never pruned. Configure via `server.max_jobs` / `server.job_ttl_seconds`.
 
 ---
 

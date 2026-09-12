@@ -10,7 +10,7 @@ fastapi/uvicorn 是**可选**依赖。若未安装，导入本模块会 ImportEr
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -19,8 +19,8 @@ from auth import CookieManager
 from config import ConfigLoader
 from control import QueueManager, RateLimiter, RetryHandler
 from core.download_service import DownloadService
-from server.jobs import JobManager
-from storage import FileManager
+from server.jobs import JobManager, JobStatus
+from storage import Database, FileManager
 from utils.logger import setup_logger
 
 logger = setup_logger("REST")
@@ -72,13 +72,23 @@ class _ServerDeps:
         self.rate_limiter = RateLimiter(max_per_second=float(config.get("rate_limit", 2) or 2))
         self.retry_handler = RetryHandler(max_retries=int(config.get("retry_times", 3) or 3))
         self.queue_manager = QueueManager(max_workers=int(config.get("thread", 5) or 5))
+        # server 与 CLI 各自持有独立的 Database 连接（WAL 支持多连接读写）；
+        # 构造是同步的，真正的 initialize/close 在 lifespan 里完成。
+        if config.get("database"):
+            db_path = config.get("database_path", "dy_downloader.db") or "dy_downloader.db"
+            self.database: Optional[Database] = Database(db_path=str(db_path))
+        else:
+            self.database = None
 
 
-async def _execute_download(url: str, deps: "_ServerDeps") -> Dict[str, int]:
+async def _execute_download(
+    url: str, deps: "_ServerDeps", job_id: Optional[str] = None
+) -> Dict[str, int]:
     """REST 编排薄壳：复用 _ServerDeps 的共享依赖，委托 DownloadService 执行。
 
     DownloadError / LoginRequiredError 直接上抛，由 JobManager 落为
-    job.error；database 暂不接线（任务持久化是路线图中期 #2 的事）。
+    job.error。``database`` 与 ``job_id`` 使 API 任务写入 aweme/history
+    并与 job 记录关联（aweme.job_id）。
     """
     service = DownloadService(
         config=deps.config,
@@ -87,7 +97,8 @@ async def _execute_download(url: str, deps: "_ServerDeps") -> Dict[str, int]:
         rate_limiter=deps.rate_limiter,
         retry_handler=deps.retry_handler,
         queue_manager=deps.queue_manager,
-        database=None,
+        database=deps.database,
+        job_id=job_id,
     )
     result = await service.run(url)
     return {
@@ -101,8 +112,8 @@ async def _execute_download(url: str, deps: "_ServerDeps") -> Dict[str, int]:
 def build_app(config: ConfigLoader) -> FastAPI:
     deps = _ServerDeps(config)
 
-    async def executor(url: str) -> Dict[str, int]:
-        return await _execute_download(url, deps)
+    async def executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        return await _execute_download(url, deps, job_id=job_id)
 
     server_cfg = config.get("server") or {}
     if not isinstance(server_cfg, dict):
@@ -114,12 +125,18 @@ def build_app(config: ConfigLoader) -> FastAPI:
         job_ttl_seconds=float(
             server_cfg.get("job_ttl_seconds") or JobManager.DEFAULT_JOB_TTL_SECONDS
         ),
+        database=deps.database,
     )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if deps.database is not None:
+            await deps.database.initialize()
+            await manager.load_persisted()
         yield
         await manager.shutdown()
+        if deps.database is not None:
+            await deps.database.close()
 
     app = FastAPI(
         title="Douyin Downloader API",
@@ -147,6 +164,33 @@ def build_app(config: ConfigLoader) -> FastAPI:
         if job is None:
             raise HTTPException(status_code=404, detail="job not found")
         return job.to_dict()
+
+    @app.post("/api/v1/jobs/{job_id}/cancel")
+    async def cancel_job(job_id: str) -> Dict[str, Any]:
+        job = await manager.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        if job.status in JobStatus.TERMINAL:
+            raise HTTPException(status_code=409, detail=f"job already {job.status}")
+        await manager.cancel(job_id)
+        refreshed = await manager.get(job_id)
+        return refreshed.to_dict() if refreshed is not None else {}
+
+    @app.post("/api/v1/jobs/{job_id}/retry", status_code=201, response_model=JobResponse)
+    async def retry_job(job_id: str) -> JobResponse:
+        """重试 = 用原 URL 提交一个新任务。
+
+        磁盘增量下载保证幂等：已成功的作品会自动跳过，只补失败/缺失的部分。
+        """
+        job = await manager.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        if job.status not in JobStatus.TERMINAL:
+            raise HTTPException(status_code=409, detail="job still in flight")
+        if not job.url:
+            raise HTTPException(status_code=400, detail="original url missing")
+        new_job = await manager.submit(job.url)
+        return JobResponse(job_id=new_job.job_id, status=new_job.status, url=new_job.url)
 
     @app.get("/api/v1/jobs")
     async def list_jobs() -> Dict[str, List[Dict[str, Any]]]:

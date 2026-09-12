@@ -4,7 +4,8 @@
 """
 
 import asyncio
-from typing import Dict
+import time
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -18,10 +19,26 @@ from config import ConfigLoader
 from server.app import build_app
 from server.jobs import JobManager
 
+_TERMINAL = ("success", "failed", "cancelled")
+
+
+class _FakeJobDB:
+    """只实现 JobManager 用到的两个方法，记录 upsert 调用。"""
+
+    def __init__(self, rows: Optional[List[Dict[str, Any]]] = None):
+        self.upserts: List[Dict[str, Any]] = []
+        self._rows = rows or []
+
+    async def upsert_job(self, job_dict: Dict[str, Any]) -> None:
+        self.upserts.append(dict(job_dict))
+
+    async def load_terminal_jobs(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        return [dict(r) for r in self._rows]
+
 
 @pytest.mark.asyncio
 async def test_job_manager_runs_executor(tmp_path):
-    async def fake_executor(url: str) -> Dict[str, int]:
+    async def fake_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
         return {"total": 1, "success": 1, "failed": 0, "skipped": 0}
 
     manager = JobManager(executor=fake_executor, max_concurrency=2)
@@ -38,7 +55,7 @@ async def test_job_manager_runs_executor(tmp_path):
 
 @pytest.mark.asyncio
 async def test_job_manager_marks_failure_on_executor_error(tmp_path):
-    async def boom(url: str) -> Dict[str, int]:
+    async def boom(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
         raise RuntimeError("bad url")
 
     manager = JobManager(executor=boom)
@@ -53,7 +70,8 @@ async def test_job_manager_marks_failure_on_executor_error(tmp_path):
 
 def test_health_endpoint(tmp_path):
     config = ConfigLoader(None)
-    config.update(path=str(tmp_path))
+    # database=False：server 会按配置建库，测试绝不能碰仓库根目录的真实 dy_downloader.db
+    config.update(path=str(tmp_path), database=False)
     app = build_app(config)
 
     with TestClient(app) as client:
@@ -64,11 +82,12 @@ def test_health_endpoint(tmp_path):
 
 def test_download_endpoint_creates_job(tmp_path, monkeypatch):
     config = ConfigLoader(None)
-    config.update(path=str(tmp_path))
+    # database=False：server 会按配置建库，测试绝不能碰仓库根目录的真实 dy_downloader.db
+    config.update(path=str(tmp_path), database=False)
     app = build_app(config)
 
     # 替换 job executor 为 fake（不去触达 Douyin）
-    async def fake_executor(url: str) -> Dict[str, int]:
+    async def fake_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
         return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
 
     app.state.job_manager.executor = fake_executor
@@ -96,7 +115,8 @@ def test_download_endpoint_creates_job(tmp_path, monkeypatch):
 
 def test_download_endpoint_rejects_empty_url(tmp_path):
     config = ConfigLoader(None)
-    config.update(path=str(tmp_path))
+    # database=False：server 会按配置建库，测试绝不能碰仓库根目录的真实 dy_downloader.db
+    config.update(path=str(tmp_path), database=False)
     app = build_app(config)
     with TestClient(app) as client:
         resp = client.post("/api/v1/download", json={"url": ""})
@@ -105,7 +125,8 @@ def test_download_endpoint_rejects_empty_url(tmp_path):
 
 def test_get_unknown_job_returns_404(tmp_path):
     config = ConfigLoader(None)
-    config.update(path=str(tmp_path))
+    # database=False：server 会按配置建库，测试绝不能碰仓库根目录的真实 dy_downloader.db
+    config.update(path=str(tmp_path), database=False)
     app = build_app(config)
     with TestClient(app) as client:
         resp = client.get("/api/v1/jobs/unknown-id")
@@ -115,7 +136,8 @@ def test_get_unknown_job_returns_404(tmp_path):
 def test_build_app_shares_deps_across_requests(tmp_path):
     """重请求应复用同一个 FileManager / RateLimiter 等（避免每次重建）。"""
     config = ConfigLoader(None)
-    config.update(path=str(tmp_path))
+    # database=False：server 会按配置建库，测试绝不能碰仓库根目录的真实 dy_downloader.db
+    config.update(path=str(tmp_path), database=False)
     app = build_app(config)
 
     deps = app.state.deps
@@ -135,7 +157,7 @@ def test_build_app_shares_deps_across_requests(tmp_path):
 async def test_job_manager_prunes_by_max_jobs():
     """max_jobs 超限时应优先淘汰最老的终态 job，保留 in-flight。"""
 
-    async def fast_executor(url: str) -> Dict[str, int]:
+    async def fast_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
         return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
 
     manager = JobManager(executor=fast_executor, max_jobs=3, job_ttl_seconds=0.0)
@@ -157,7 +179,7 @@ async def test_job_manager_prunes_by_max_jobs():
 async def test_job_manager_prunes_by_ttl():
     """TTL 过期的终态 job 应在下次 submit 时被清理。"""
 
-    async def fast_executor(url: str) -> Dict[str, int]:
+    async def fast_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
         return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
 
     manager = JobManager(executor=fast_executor, max_jobs=100, job_ttl_seconds=0.01)
@@ -173,3 +195,246 @@ async def test_job_manager_prunes_by_ttl():
     remaining_ids = {j.job_id for j in await manager.list_jobs()}
     assert old_job.job_id not in remaining_ids
     assert new_job.job_id in remaining_ids
+
+
+# ---------- 任务持久化 / 取消 / 重试（中期 #2） ----------
+
+
+@pytest.mark.asyncio
+async def test_job_manager_passes_job_id_to_executor():
+    seen: Dict[str, Any] = {}
+
+    async def recording_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        seen["job_id"] = job_id
+        return {"total": 1, "success": 1, "failed": 0, "skipped": 0}
+
+    manager = JobManager(executor=recording_executor)
+    job = await manager.submit("https://x/1")
+    await asyncio.wait_for(job._task, timeout=1.0)
+
+    assert seen["job_id"] == job.job_id
+
+
+@pytest.mark.asyncio
+async def test_job_manager_persists_terminal_job_to_database():
+    db = _FakeJobDB()
+
+    async def ok_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        return {"total": 2, "success": 1, "failed": 1, "skipped": 0}
+
+    manager = JobManager(executor=ok_executor, database=db)
+    job = await manager.submit("https://x/1")
+    await asyncio.wait_for(job._task, timeout=1.0)
+
+    assert len(db.upserts) == 1
+    record = db.upserts[0]
+    assert record["job_id"] == job.job_id
+    assert record["url"] == "https://x/1"
+    # failed > 0 → 终态 failed；计数一并落库
+    assert record["status"] == "failed"
+    assert record["total"] == 2 and record["success"] == 1 and record["failed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_job_manager_without_database_skips_persistence():
+    # database=None 时不得抛错（兼容旧用法），也无所谓 upsert
+    async def ok_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        return {"total": 1, "success": 1, "failed": 0, "skipped": 0}
+
+    manager = JobManager(executor=ok_executor, database=None)
+    job = await manager.submit("https://x/1")
+    await asyncio.wait_for(job._task, timeout=1.0)
+    assert job.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_job_manager_cancel_running_job_marks_cancelled():
+    started = asyncio.Event()
+
+    async def slow_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        started.set()
+        await asyncio.Event().wait()  # 一直阻塞直到被取消
+        return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+
+    manager = JobManager(executor=slow_executor)
+    job = await manager.submit("https://x/slow")
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+
+    cancelled = await manager.cancel(job.job_id)
+
+    assert cancelled is not None
+    await asyncio.wait_for(job._task, timeout=1.0)
+    assert job.status == "cancelled"
+    assert job.finished_at is not None
+
+
+@pytest.mark.asyncio
+async def test_job_manager_cancel_persists_cancelled_state():
+    db = _FakeJobDB()
+    started = asyncio.Event()
+
+    async def slow_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        started.set()
+        await asyncio.Event().wait()
+        return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+
+    manager = JobManager(executor=slow_executor, database=db)
+    job = await manager.submit("https://x/slow")
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+
+    await manager.cancel(job.job_id)
+    await asyncio.wait_for(job._task, timeout=1.0)
+
+    assert db.upserts and db.upserts[-1]["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_job_manager_cancel_unknown_job_returns_none():
+    async def ok_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+
+    manager = JobManager(executor=ok_executor)
+    assert await manager.cancel("no-such-job") is None
+
+
+@pytest.mark.asyncio
+async def test_job_manager_load_persisted_restores_terminal_jobs():
+    rows = [
+        {
+            "job_id": "old1",
+            "url": "https://x/old1",
+            "status": "failed",
+            "created_at": "2026-09-12T00:00:00Z",
+            "started_at": "2026-09-12T00:00:01Z",
+            "finished_at": "2026-09-12T00:00:02Z",
+            "total": 3,
+            "success": 1,
+            "failed": 2,
+            "skipped": 0,
+            "error": "boom",
+            "author_nickname": None,
+            "author_sec_uid": None,
+            "retry_count": 0,
+            "last_retry_at": None,
+            "last_retry_summary": None,
+            "retry_history": [],
+            "overrides": None,
+        }
+    ]
+    db = _FakeJobDB(rows=rows)
+
+    async def ok_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+
+    manager = JobManager(executor=ok_executor, database=db)
+    await manager.load_persisted()
+
+    jobs = {j.job_id: j for j in await manager.list_jobs()}
+    restored = jobs.get("old1")
+    assert restored is not None
+    assert restored.status == "failed"
+    assert restored.url == "https://x/old1"
+    assert restored.total == 3 and restored.failed == 2
+    assert restored.error == "boom"
+
+
+def _wait_terminal(client: TestClient, job_id: str) -> Dict[str, Any]:
+    for _ in range(100):
+        detail = client.get(f"/api/v1/jobs/{job_id}").json()
+        if detail.get("status") in _TERMINAL:
+            return detail
+        time.sleep(0.02)
+    raise AssertionError(f"job {job_id} never reached terminal state: {detail}")
+
+
+def test_cancel_endpoint_unknown_job_returns_404(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+    with TestClient(app) as client:
+        resp = client.post("/api/v1/jobs/no-such-id/cancel")
+        assert resp.status_code == 404
+
+
+def test_cancel_endpoint_conflicts_on_terminal_job(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+
+    async def ok_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        return {"total": 1, "success": 1, "failed": 0, "skipped": 0}
+
+    app.state.job_manager.executor = ok_executor
+
+    with TestClient(app) as client:
+        job_id = client.post("/api/v1/download", json={"url": "https://x/1"}).json()["job_id"]
+        _wait_terminal(client, job_id)
+        resp = client.post(f"/api/v1/jobs/{job_id}/cancel")
+        assert resp.status_code == 409
+
+
+def test_retry_endpoint_resubmits_failed_job_as_new(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+
+    attempts: List[str] = []
+
+    async def flaky_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        attempts.append(url)
+        if len(attempts) == 1:
+            return {"total": 1, "success": 0, "failed": 1, "skipped": 0}
+        return {"total": 1, "success": 1, "failed": 0, "skipped": 0}
+
+    app.state.job_manager.executor = flaky_executor
+
+    with TestClient(app) as client:
+        first = client.post("/api/v1/download", json={"url": "https://x/flaky"}).json()
+        assert _wait_terminal(client, first["job_id"])["status"] == "failed"
+
+        retry = client.post(f"/api/v1/jobs/{first['job_id']}/retry")
+        assert retry.status_code == 201
+        body = retry.json()
+        assert body["job_id"] != first["job_id"]
+        assert body["url"] == "https://x/flaky"
+
+        detail = _wait_terminal(client, body["job_id"])
+        assert detail["status"] == "success"
+        assert attempts == ["https://x/flaky", "https://x/flaky"]
+
+
+def test_retry_endpoint_conflicts_while_in_flight(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+
+    async def slow_executor(url: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        await asyncio.sleep(5)
+        return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+
+    app.state.job_manager.executor = slow_executor
+
+    with TestClient(app) as client:
+        first = client.post("/api/v1/download", json={"url": "https://x/slow"}).json()
+        resp = client.post(f"/api/v1/jobs/{first['job_id']}/retry")
+        assert resp.status_code == 409
+
+
+def test_retry_endpoint_unknown_job_returns_404(tmp_path):
+    config = ConfigLoader(None)
+    config.update(path=str(tmp_path), database=False)
+    app = build_app(config)
+    with TestClient(app) as client:
+        resp = client.post("/api/v1/jobs/no-such-id/retry")
+        assert resp.status_code == 404
+
+
+def test_build_app_initializes_database_when_enabled(tmp_path):
+    """database=true 时 server 应建库并初始化；lifespan 退出时关闭。"""
+    config = ConfigLoader(None)
+    config.update(
+        path=str(tmp_path), database=True, database_path=str(tmp_path / "jobs.db")
+    )
+    app = build_app(config)
+    with TestClient(app):
+        assert app.state.deps.database is not None
