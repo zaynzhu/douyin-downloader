@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>抖音下载 · 设计原型</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#download"><span class="brand-mark" aria-hidden="true">↓</span><span>抖音下载<small>douyin-downloader</small></span></a>
+      <nav aria-label="主导航">
+        <a href="#download" data-page="download"><span aria-hidden="true">↓</span>下载</a>
+        <a href="#jobs" data-page="jobs"><span aria-hidden="true">☷</span>任务中心<span class="nav-count" id="active-count">2</span></a>
+        <a href="#history" data-page="history"><span aria-hidden="true">▤</span>下载历史</a>
+        <a href="#settings" data-page="settings"><span aria-hidden="true">⚙</span>设置</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="local-label"><i class="dot"></i>个人下载工作台</div><p>文件归你，随时可用。</p><button id="theme-toggle" class="quiet">切换浅色外观</button></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><span id="breadcrumb">工作台 / 下载</span><span class="prototype-tag">设计预览 · 演示数据</span></header>
+      <main id="main" tabindex="-1">
+        <section id="download" class="page">
+          <div class="page-heading"><div><h1>把喜欢的，留在本地。</h1><p>粘贴抖音链接，剩下的交给下载队列。</p></div></div>
+          <form id="download-form" class="composer">
+            <div class="composer-heading"><label for="urls">下载链接</label><span>支持多条，每行一条</span></div>
+            <textarea id="urls" rows="4" spellcheck="false" placeholder="在这里粘贴分享链接或分享文案&#10;https://www.douyin.com/video/…" aria-describedby="recognition"></textarea>
+            <div id="recognition" class="recognition" aria-live="polite">视频、图文、用户主页、合集、音乐和直播链接</div>
+            <div class="composer-footer"><button type="button" class="quiet" id="fill-example">试填示例链接</button><div class="submit-area"><span>⌘ / Ctrl + Enter</span><button class="primary" id="submit-download" disabled>加入下载队列 <span aria-hidden="true">↓</span></button></div></div>
+          </form>
+          <div class="below-composer"><span>保留原始作品信息，已下载内容自动跳过</span><a href="#settings">查看下载配置</a></div>
+          <div class="section-heading"><h2>最近任务 <span id="recent-count"></span></h2><a href="#jobs">查看全部任务 <span aria-hidden="true">↗</span></a></div>
+          <div id="recent-jobs"></div>
+          <div class="usage-note"><span aria-hidden="true">↳</span><div><strong>从一条链接开始</strong><p>粘贴用户主页可批量下载作品；只想保留单个作品，直接粘贴视频或图文链接。</p></div></div>
+        </section>
+        <section id="jobs" class="page" hidden>
+          <div class="page-heading"><div><h1>任务中心</h1><p>正在下载的、已经完成的，都在这里。</p></div><span class="poll-label" id="poll-label"><i class="dot"></i>演示进度 · 每 2 秒更新</span></div>
+          <div class="tabs" id="job-tabs" role="group" aria-label="任务状态筛选"><button data-status="all" class="selected">全部</button><button data-status="active">进行中</button><button data-status="success">已完成</button><button data-status="failed">失败</button><button data-status="cancelled">已取消</button></div>
+          <div id="job-list"></div>
+          <p class="footnote">此处保留近期任务；已下载作品可在<a href="#history">下载历史</a>中查找。</p>
+        </section>
+        <section id="history" class="page" hidden>
+          <div class="page-heading"><div><h1>下载历史</h1><p>每一次保存，都有迹可循。</p></div><span class="total-label" id="history-total"></span></div>
+          <div class="history-layout"><div class="history-main">
+            <form class="filters" id="history-filters">
+              <div class="search-pair"><select id="search-field" aria-label="搜索字段"><option value="author">作者</option><option value="title">标题</option></select><input id="history-search" aria-label="搜索作者或标题" placeholder="搜索作者…" type="search"></div>
+              <select id="history-type" aria-label="作品类型"><option value="all">全部类型</option><option value="video">视频</option><option value="gallery">图文</option></select>
+              <button type="button" id="more-filters" aria-expanded="false">更多筛选</button>
+              <select id="history-sort" aria-label="排序"><option value="download_time">最近下载</option><option value="create_time">最近发布</option></select>
+              <div id="extra-filters" class="extra-filters" hidden><label>发布日期，从<input id="date-from" type="date"></label><label>至<input id="date-to" type="date"></label><label>任务 ID<input id="job-filter" placeholder="输入任务 ID"></label><button type="reset">重置筛选</button></div>
+            </form>
+            <div class="table-wrap"><table><thead><tr><th scope="col">作品</th><th scope="col">作者 / 类型</th><th scope="col">时间</th><th scope="col">文件</th></tr></thead><tbody id="history-rows"></tbody></table><div id="history-empty" hidden></div></div>
+            <div class="pagination"><span id="page-summary"></span><div><label>每页 <select id="page-size"><option value="50">50</option><option value="8">8（演示分页）</option></select></label><button id="previous-page" aria-label="上一页">‹</button><span id="page-number"></span><button id="next-page" aria-label="下一页">›</button></div></div>
+          </div><aside class="authors-panel"><h2>常下载的作者</h2><p>近 30 天</p><div id="author-list"></div><p class="footnote">点击作者，查看保存的作品。</p></aside></div>
+        </section>
+        <section id="settings" class="page" hidden>
+          <div class="page-heading"><div><h1>设置</h1><p>确认下载方式，让每次保存更顺手。</p></div></div>
+          <div class="settings-content"><div class="notice"><strong>当前为配置展示样稿</strong><p>接口尚未提供配置读取与写入。以下数值为示例，实际设置请修改 config.yml 后重启服务。</p></div>
+            <section class="settings-group"><h2>下载偏好</h2><div class="setting-row"><div><h3>下载画质</h3><p>以作品可获取的清晰度为准</p></div><span class="readonly-value">最高可用画质 <small>示例</small></span></div><div class="setting-row"><div><h3>同时下载数</h3><p>控制同时进行的文件下载数量</p></div><span class="readonly-value">3 <small>示例</small></span></div><div class="setting-row"><div><h3>保存位置</h3><p>服务所在机器上的目录</p></div><code>./Downloaded/</code></div></section>
+            <section class="settings-group"><div class="section-heading"><h2>Cookie</h2><span id="cookie-status" class="badge cancelled">未检测</span></div><p id="cookie-message">当前接口不返回 Cookie 有效性，不能据此判断是否可用。</p><div class="command-box"><div><strong>重新获取 Cookie</strong><p>在服务所在机器的项目目录运行以下命令，完成后重启服务。</p></div><div class="command-line"><code>python -m tools.cookie_fetcher --config config.yml</code><button id="copy-command">复制命令</button></div></div></section>
+            <section class="settings-group"><h2>关于这个工作台</h2><p>本地、自用、开源、免费。</p><p class="footnote">本原型不连接下载服务，所有任务与作品均为虚构示例。浏览器刷新后恢复初始演示数据。</p></section>
+          </div>
+        </section>
+        <div id="global-state" hidden aria-live="polite"></div>
+      </main>
+      <footer class="preview-controls"><span>原型状态预览</span><label>页面状态<select id="scenario"><option value="normal">正常数据</option><option value="empty">空状态</option><option value="loading">加载中</option><option value="error">请求失败</option><option value="offline">服务离线</option></select></label><label id="cookie-demo-label" hidden>Cookie 示例<select id="cookie-demo"><option value="unknown">未检测</option><option value="valid">有效</option><option value="invalid">失效</option></select></label><button id="reset-demo" class="quiet">重置演示</button></footer>
+    </div>
+  </div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="path-dialog" aria-labelledby="path-title"><div class="dialog-heading"><h2 id="path-title">文件位置</h2><button id="close-dialog" aria-label="关闭">×</button></div><p>此路径位于下载服务所在机器。</p><code id="file-path"></code><div class="dialog-actions"><button id="copy-path" class="primary">复制路径</button></div></dialog>
+</body>
+</html>
