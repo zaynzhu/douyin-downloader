@@ -18,6 +18,7 @@ docs/
 | `analysis/2026-09-12-current-state.md` | 仓库现状全景分析：调用链、模块、存储、API、测试、安全审计、文档失实清单 | 任何任务开始前先读它，避免重复探索 |
 | `analysis/2026-09-12-reference-projects.md` | 四个参考项目（F2 / TikTokDownloader / res-downloader / 上游 Douzy）调研，含 License 约束 | 做新功能前查"是否已有成熟方案可借鉴" |
 | `analysis/2026-09-12-roadmap.md` | 三阶段路线图，含每条建议的正反辩证、验收标准、触发条件与待用户决策项 | 选择下一步任务、理解"为什么是这个顺序" |
+| `analysis/2026-09-12-intake-report.md` | 接手时终端交付报告的原始快照（12 项分析 + 三阶段路线的原始版本） | 追溯当时的原始判断与措辞；维护以另外三份文档为准 |
 
 ## 使用约定
 
