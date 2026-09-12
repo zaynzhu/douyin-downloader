@@ -21,6 +21,7 @@ docs/
 | `analysis/2026-09-12-intake-report.md` | 接手时终端交付报告的原始快照（12 项分析 + 三阶段路线的原始版本） | 追溯当时的原始判断与措辞；维护以另外三份文档为准 |
 | `analysis/2026-09-12-desktop-evaluation.md` | 桌面端（Desktop App）评估：为什么默认不做、三个翻案触发条件、真做时的路线排序 | 未来纠结"要不要桌面端"时先读它，不要重新推导 |
 | `analysis/2026-09-12-webui-design-brief.md` | Web UI 设计任务书：自包含（定位/四页架构/API 契约/交互参考/交付物要求），交给设计方 | 设计交接用；设计产出回来后工程侧据此实现 |
+| `analysis/2026-09-12-webui-merge-plan.md` | Web UI 合并实施计划：webui2 为骨架 + webui1 正确性要素（B1 字段搜索 / B2 窄屏修复 / B3 全局态）+ 两阶段落地（webui3 原型 → server/static 接线） | Phase 1/2 执行依据；每项含现状/改法/验收 |
 
 ## 使用约定
 
