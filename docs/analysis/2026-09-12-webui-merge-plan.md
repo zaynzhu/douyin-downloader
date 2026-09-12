@@ -3,6 +3,8 @@
 > 依据：两版设计原型评审（见会话记录与 `docs/design/webui`（浅色工作台）/`docs/design/webui2`（深色控制台）的 README）。本文自包含，可交给任何模型执行。
 > 决策：**采用合并方案**——骨架用 webui2，并入 webui1 的正确性要素，修复 webui2 的实测缺陷。
 
+> 执行状态（2026-09-12）：Phase 1 合并产物已落地 `docs/design/webui3/`，验证记录见 [webui3 README](../design/webui3/README.md)。等待用户视觉验收；Phase 2 尚未开始。桌面复用方向见 [后续交付计划](2026-09-12-desktop-delivery-plan.md)。下方总清单包含真实接线项，不以离线原型测试代替。
+
 ## 1. 合并原则
 
 ```text

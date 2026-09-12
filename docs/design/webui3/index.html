@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>抖音下载工作台 · webui3 合并原型</title>
+<link rel="stylesheet" href="style.css?v=3">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='4' fill='%232cc26e'/><path d='M11 4v3.5a2.5 2.5 0 1 1-2-2.45V4h2z' fill='%2317191c'/></svg>">
+</head>
+<body data-theme="dark">
+
+<a class="skip-link" href="#main">跳到主内容</a>
+
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="#download">
+      <svg class="brand-mark" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 10 L7 3 L9 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 6 L13 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="brand-name">抖音下载工作台</span>
+      <span class="brand-tag">设计原型</span>
+    </a>
+    <nav class="top-nav" aria-label="页面">
+      <a href="#download" data-route="download">下载</a>
+      <a href="#jobs" data-route="jobs">任务<span class="nav-indicator" id="navJobsIndicator"></span><span class="nav-count" id="navJobsCount" hidden>0</span></a>
+      <a href="#history" data-route="history">历史</a>
+      <a href="#settings" data-route="settings">设置</a>
+    </nav>
+    <div class="top-right">
+      <span class="status-pill" id="netPill">
+        <span class="dot dot-unknown" id="netDot"></span>
+        <span class="pill-text" id="netPillText">服务未检查</span><span class="pill-text" id="netPillTime"></span>
+      </span>
+      <span class="status-pill is-stale" id="cookiePill" hidden title="Cookie 失效时请运行 python -m tools.cookie_fetcher --config config.yml">
+        <span class="dot dot-failed"></span>
+        <a href="#settings" class="pill-text">Cookie 失效</a>
+      </span>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="切换浅色外观">浅色</button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="main">
+    <div class="banner warn" id="netBanner" hidden>
+      <span id="netBannerText">网络请求失败，展示最后一份数据。</span>
+      <span class="banner-time" id="netBannerTime"></span>
+      <button type="button" class="btn-ghost sm" id="netRetry">重试</button>
+    </div>
+  <section class="empty" id="global-state" hidden aria-live="polite" aria-labelledby="globalStateTitle">
+    <h1 class="empty-title" id="globalStateTitle"></h1>
+    <p class="empty-sub" id="globalStateMessage"></p>
+    <button type="button" class="btn-primary" id="globalRetry">重新加载</button>
+  </section>
+
+  <!-- ============ 页面：下载 ============ -->
+  <section class="page" id="page-download">
+    <div class="dl-grid">
+      <div class="dl-left">
+        <h1 class="dl-title">把链接变成文件</h1>
+        <p class="dl-sub">粘贴分享链接或整段分享文案，每行一条；视频、图文、主页、合集自动识别，逐条提交下载。</p>
+        <form id="dlForm" class="dl-form" novalidate>
+          <label class="field-label" for="dlInput">下载链接</label>
+          <div class="dl-input-wrap">
+            <textarea id="dlInput" rows="5" spellcheck="false" placeholder="https://v.douyin.com/xxxx/&#10;https://www.douyin.com/user/MS4wLjA...&#10;支持直接粘贴整段分享文案，自动提取其中的链接"></textarea>
+            <div class="dl-actions">
+              <button type="submit" class="btn-primary" id="dlSubmit" disabled>
+                加入队列
+                <span class="btn-count" id="dlCount">0</span>
+                <kbd class="kbd">⌘↵</kbd>
+              </button>
+            </div>
+          </div>
+          <div class="dl-chips" id="dlChips" hidden></div>
+          <div class="dl-examples">
+            <span class="hint">没有链接可以试试 </span>
+            <button type="button" class="link-btn" id="fillVideo">视频示例</button>
+            <button type="button" class="link-btn" id="fillMulti">混合多条</button>
+          </div>
+        </form>
+      </div>
+      <aside class="dl-right" aria-label="下载前确认">
+        <div class="dl-side-head">下载前确认</div>
+        <ol class="dl-notes">
+          <li>可下载范围以服务端解析结果为准。</li>
+          <li><a href="#settings" class="inline-link">Cookie 需保持有效</a>，失效时在设置页看修复指引。</li>
+          <li>每条链接提交为一个任务；批量提交逐条间隔 2 秒，避免触发限流。</li>
+          <li>重复链接提交前先确认，去重可随时撤回。</li>
+        </ol>
+        <div id="dlNotice" hidden></div>
+      </aside>
+    </div>
+
+    <div class="recent" id="recentBlock">
+      <div class="recent-head">
+        <h2 class="recent-title">最近任务</h2>
+        <a class="inline-link" href="#jobs" id="recentAll">查看全部任务</a>
+      </div>
+      <div class="recent-track">
+        <div class="recent-row" id="recentRow"></div>
+      </div>
+      <div class="empty empty-compact" id="recentEmpty" hidden>
+        <p>还没有任务。粘贴第一条链接试试。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 页面：任务中心 ============ -->
+  <section class="page" id="page-jobs" hidden>
+    <div class="jobs-head">
+      <h1 class="page-title">任务中心</h1>
+      <div class="tabs" role="tablist" aria-label="任务状态筛选" id="jobsTabs">
+        <button type="button" role="tab" class="tab is-active" data-filter="all">全部 <span class="tab-count" data-tab-count="all">0</span></button>
+        <button type="button" role="tab" class="tab" data-filter="live">进行中 <span class="tab-count" data-tab-count="live">0</span></button>
+        <button type="button" role="tab" class="tab" data-filter="success">成功 <span class="tab-count" data-tab-count="success">0</span></button>
+        <button type="button" role="tab" class="tab" data-filter="failed">失败 <span class="tab-count" data-tab-count="failed">0</span></button>
+        <button type="button" role="tab" class="tab" data-filter="cancelled">已取消 <span class="tab-count" data-tab-count="cancelled">0</span></button>
+      </div>
+      <button type="button" class="btn-ghost" id="jobsRefresh">刷新</button>
+    </div>
+
+    <div class="banner info" id="pollBanner" hidden>
+      <span class="dot dot-live" aria-hidden="true"></span>
+      <span id="pollBannerText">每 2 秒更新一次</span>
+    </div>
+
+
+    <div class="jobs-list" id="jobsList"></div>
+
+    <div class="empty" id="jobsEmpty">
+      <svg class="empty-icon" viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="10" width="36" height="28" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M14 20 h12 M14 26 h20 M14 32 h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <p class="empty-title">暂无任务</p>
+      <p class="empty-sub">任务只保留在服务端内存中，重启后清空；已完成的作品在下载历史中查看。</p>
+      <a class="btn-ghost" href="#download">去下载页添加链接</a>
+    </div>
+  </section>
+
+  <!-- ============ 页面：下载历史 ============ -->
+  <section class="page" id="page-history" hidden>
+    <div class="hist-head">
+      <h1 class="page-title">下载历史</h1>
+      <p class="page-sub" id="histTotal">共 0 条</p>
+    </div>
+
+    <form class="hist-filters" id="histFilters">
+      <div class="field">
+        <label class="field-label" for="fSearch">搜索作品</label>
+        <div class="search-field-pair">
+          <select id="fSearchField" aria-label="搜索字段"><option value="author">作者</option><option value="title">标题</option></select>
+          <input type="search" id="fSearch" placeholder="搜索作者…">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">类型</label>
+        <div class="seg" id="fType">
+          <button type="button" class="seg-btn is-active" data-type="all">全部</button>
+          <button type="button" class="seg-btn" data-type="video">视频</button>
+          <button type="button" class="seg-btn" data-type="gallery">图文</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="fFrom">发布开始</label>
+        <input type="date" id="fFrom">
+      </div>
+      <div class="field">
+        <label class="field-label" for="fTo">发布结束</label>
+        <input type="date" id="fTo">
+      </div>
+      <div class="field">
+        <label class="field-label" for="fSort">排序</label>
+        <select id="fSort">
+          <option value="download_time">下载时间</option>
+          <option value="create_time">发布时间</option>
+        </select>
+      </div>
+      <div class="field" id="fieldJob" hidden>
+        <label class="field-label" for="fJob">任务 ID</label>
+        <div class="job-filter">
+          <input type="text" id="fJob" spellcheck="false">
+          <button type="button" class="btn-ghost sm" id="fJobClear">清除</button>
+        </div>
+      </div>
+      <div class="field field-actions">
+        <button type="submit" class="btn-primary sm">筛选</button>
+        <button type="button" class="btn-ghost sm" id="histReset">重置</button>
+      </div>
+    </form>
+
+    <p class="hist-note">发布日期按北京时间过滤；可按作者或标题分别搜索。</p>
+
+    <div class="hist-table-wrap">
+      <table class="hist-table" id="histTable">
+        <thead>
+          <tr>
+            <th class="col-cover">封面</th>
+            <th class="col-title">标题 / 作者</th>
+            <th class="col-type">类型</th>
+            <th class="col-time">发布时间</th>
+            <th class="col-time">下载时间</th>
+            <th class="col-path">文件位置</th>
+          </tr>
+        </thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+
+    <div class="empty" id="histEmpty" hidden>
+      <svg class="empty-icon" viewBox="0 0 48 48" aria-hidden="true"><circle cx="21" cy="21" r="12" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M30 30 L40 40" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <p class="empty-title">没有匹配的记录</p>
+      <p class="empty-sub">尝试放宽筛选条件，或去下载页添加新任务。</p>
+    </div>
+
+    <div class="hist-foot">
+      <div class="pager" id="pager">
+        <button type="button" class="btn-ghost sm" id="pagePrev">上一页</button>
+        <span class="pager-info" id="pageInfo">第 1 页 / 共 1 页</span>
+        <button type="button" class="btn-ghost sm" id="pageNext">下一页</button>
+        <label class="pager-size">
+          每页
+          <select id="pageSize">
+            <option value="8">8</option>
+            <option value="20">20</option>
+            <option value="50" selected>50</option>
+          </select>
+        </label>
+      </div>
+      <details class="top-authors" id="topAuthors">
+        <summary>近 30 天下载最多作者（点击查看）</summary>
+        <ol class="authors-list" id="authorsList"></ol>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ 页面：设置 ============ -->
+  <section class="page" id="page-settings" hidden>
+    <div class="settings-grid">
+      <div class="page-head">
+        <h1 class="page-title">设置</h1>
+        <p class="page-sub">本版本不提供页内配置写入；要修改请编辑配置文件后重启服务。Cookie 重新获取通过命令行完成。</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">Cookie 状态</h2>
+          <span class="status-pill" id="setCookiePill">
+            <span class="dot dot-unknown" id="setCookieDot"></span>
+            <span class="pill-text" id="setCookieText">未检测</span>
+          </span>
+        </div>
+        <div class="panel-body">
+          <p class="panel-note">接口不提供 Cookie 检测，此处由原型底部控件切换示意；接入前不要根据健康检查推断 Cookie 有效。</p>
+          <div class="cookie-fix" id="cookieFix" hidden>
+            <p class="cookie-fix-text">Cookie 已失效。在终端运行以下命令，按提示完成浏览器验证后重启服务：</p>
+            <pre class="code-block"><code id="cookieCmd">python -m tools.cookie_fetcher --config config.yml</code><button type="button" class="btn-ghost sm" id="cookieCopy">复制</button></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2 class="panel-title">当前生效配置</h2>
+          <span class="panel-tag">示例快照</span>
+        </div>
+        <div class="panel-body">
+          <dl class="config-list">
+            <div class="config-item"><dt>输出目录</dt><dd>Downloaded/</dd></div>
+            <div class="config-item"><dt>下载画质</dt><dd>最高可用</dd></div>
+            <div class="config-item"><dt>并发数</dt><dd>3</dd></div>
+            <div class="config-item"><dt>请求间隔</dt><dd>≥ 2 秒</dd></div>
+            <div class="config-item"><dt>代理</dt><dd>未启用</dd></div>
+            <div class="config-item"><dt>音频转写</dt><dd>关闭</dd></div>
+          </dl>
+          <p class="panel-note">以上均为演示值，未读取 config.yml。当前接口没有配置读取能力，实际生效值请在服务所在机器核对。</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2 class="panel-title">服务</h2></div>
+        <div class="panel-body">
+          <dl class="config-list">
+            <div class="config-item"><dt>服务地址</dt><dd><code>http://127.0.0.1:8000</code></dd></div>
+            <div class="config-item"><dt>接口文档</dt><dd><code>/docs</code>（FastAPI OpenAPI）</dd></div>
+            <div class="config-item">
+              <dt>健康检查</dt>
+              <dd>
+                <span class="status-inline" id="healthState">未检查</span>
+                <button type="button" class="btn-ghost sm" id="healthCheck">重新检查</button>
+              </dd>
+            </div>
+            <div class="config-item">
+              <dt>历史数据</dt>
+              <dd>SQLite 本地库；任务队列为内存态，重启服务后任务列表清空，已下载作品保留在历史中。</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="devbar" id="devbar">
+  <span class="devbar-label">原型状态预览（评审用，正式产品移除）</span>
+  <label class="dev-data-label">数据场景 <select id="devData"><option value="populated">已有数据</option><option value="empty">空数据 / 首次加载</option></select></label>
+  <div class="seg" id="devJobsState">
+    <button type="button" class="seg-btn is-active" data-state="normal">正常</button>
+    <button type="button" class="seg-btn" data-state="loading">加载中</button>
+    <button type="button" class="seg-btn" data-state="error">请求失败</button>
+    <button type="button" class="seg-btn" data-state="offline">服务离线</button>
+  </div>
+  <div class="seg" id="devCookieState">
+    <button type="button" class="seg-btn is-active" data-cookie="unknown">Cookie 未检测</button>
+    <button type="button" class="seg-btn" data-cookie="ok">Cookie 有效</button>
+    <button type="button" class="seg-btn" data-cookie="stale">Cookie 失效</button>
+  </div>
+  <button type="button" class="btn-ghost sm" id="devReset">重置演示</button>
+</footer>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<dialog class="dialog" id="pathDialog" aria-labelledby="pathDialogTitle">
+  <h3 class="dialog-title" id="pathDialogTitle">文件位置</h3>
+  <pre class="dialog-path" id="pathDialogText"></pre>
+  <p class="dialog-note" id="pathDialogHint" hidden>浏览器拦截了自动复制，请手动全选复制。</p>
+  <div class="dialog-actions">
+    <button type="button" class="btn-primary sm" id="pathCopy">复制路径</button>
+    <button type="button" class="btn-ghost sm" id="pathClose">关闭</button>
+  </div>
+</dialog>
+
+<script src="app.js?v=3.1" defer></script>
+</body>
+</html>
