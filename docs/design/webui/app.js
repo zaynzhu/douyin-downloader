@@ -55,8 +55,8 @@ function renderJobs() {
   const available = scenario === 'empty' ? [] : jobs
   const activeCount = available.filter(isActive).length
   $('#active-count').textContent = activeCount || ''
-  $('#recent-count').textContent = available.length ? `最近 ${Math.min(3, available.length)} 项` : ''
-  $('#recent-jobs').innerHTML = available.length ? available.slice(0, 3).map(job => jobMarkup(job, true)).join('') : emptyState('还没有下载任务', '粘贴第一条链接，开始保存喜欢的作品。')
+  $('#recent-count').textContent = available.length ? `最近 ${Math.min(5, available.length)} 项` : ''
+  $('#recent-jobs').innerHTML = available.length ? available.slice(0, 5).map(job => jobMarkup(job, true)).join('') : emptyState('还没有下载任务', '粘贴第一条链接，开始保存喜欢的作品。')
   const filtered = available.filter(job => jobFilter === 'all' || (jobFilter === 'active' ? isActive(job) : job.status === jobFilter))
   $('#job-list').innerHTML = filtered.length ? filtered.map(job => jobMarkup(job)).join('') : emptyState('这里还没有任务', '换个筛选条件，或添加一条下载链接。', '<a href="#download">去下载</a>')
   $('#poll-label').innerHTML = activeCount ? '<i class="dot"></i>演示进度 · 每 2 秒更新' : '当前没有进行中的任务'
@@ -138,9 +138,9 @@ function parseInput() {
     }
     return { url, name, valid: allowed && name !== '暂不支持的链接' }
   })
-  $('#recognition').innerHTML = parsedLinks.length ? parsedLinks.map((link, index) => `<span class="badge ${link.valid ? 'running' : 'failed'}">${index + 1} · ${link.name}</span>`).join('') : raw ? '<span class="badge failed">未找到有效链接，请粘贴完整分享链接</span>' : '视频、图文、用户主页、合集、音乐和直播链接'
+  $('#recognition').innerHTML = parsedLinks.length ? parsedLinks.map((link, index) => `<span class="badge ${link.valid ? 'running' : 'failed'}">${index + 1} · ${link.name}</span>`).join('') : raw ? '<span class="badge failed">未找到有效链接，请粘贴完整分享链接</span>' : '视频、图文、主页、合集、音乐、直播'
   $('#submit-download').disabled = !parsedLinks.length || parsedLinks.some(link => !link.valid)
-  $('#submit-download').innerHTML = `加入下载队列${parsedLinks.length ? `（${parsedLinks.length}）` : ''} <span aria-hidden="true">↓</span>`
+  $('#submit-download').innerHTML = `加入队列${parsedLinks.length ? `（${parsedLinks.length}）` : ''} <span aria-hidden="true">↵</span>`
 }
 $('#urls').addEventListener('input', parseInput)
 $('#urls').addEventListener('keydown', event => {
@@ -259,7 +259,7 @@ $('#copy-command').addEventListener('click', () => copyText('python -m tools.coo
 $('#theme-toggle').addEventListener('click', () => {
   const light = document.documentElement.dataset.theme !== 'light'
   document.documentElement.dataset.theme = light ? 'light' : 'dark'
-  $('#theme-toggle').textContent = light ? '切换深色外观' : '切换浅色外观'
+  $('#theme-toggle').textContent = light ? '深色外观' : '浅色外观'
 })
 $('#scenario').addEventListener('change', () => { scenario = $('#scenario').value; renderPage() })
 $('#cookie-demo').addEventListener('change', () => {
