@@ -6,6 +6,8 @@
 
 一个面向实用场景的抖音下载工具，支持视频、图文、合集、音乐、收藏夹等多种类型下载，以及作者主页批量下载，默认带进度展示、重试、数据库去重、下载完整性校验和浏览器兜底能力。
 
+> **Fork 说明：** 本仓库 fork 自 [jiji262/douyin-downloader](https://github.com/jiji262/douyin-downloader)，独立维护并感谢上游的持续开发。本 fork 的差异化方向：自托管 REST API / Task Service 与后续 Web UI——不引入邀请码、会员或 License 校验。下文桌面版（Douzy）为上游产品。
+
 ## 桌面版（Douzy）
 
 基于同一套后端打造的桌面客户端，为抖音、TikTok、YouTube 提供独立工作台。粘贴链接即可开始下载，同步账号内容，可视化跟踪任务，并在本地档案中统一管理已下载作品。
@@ -74,7 +76,7 @@ _截图来自当前桌面端 `main` 构建；为保护隐私，界面内容使�
 
 ### 1) 环境准备
 
-- Python 3.8+
+- Python 3.9+
 - macOS / Linux / Windows
 
 ### 2) 安装依赖

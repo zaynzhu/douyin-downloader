@@ -14,6 +14,8 @@
 
 A practical Douyin downloader supporting videos, image-notes, collections, music, favorites collections, and profile batch downloads, with progress display, retries, SQLite deduplication, download integrity checks, and browser fallback support.
 
+> **Fork notice:** This repository is a fork of [jiji262/douyin-downloader](https://github.com/jiji262/douyin-downloader), maintained independently with thanks to the upstream project. This fork's direction: first-party REST API / Task Service and a future self-hostable Web UI — no invite codes, membership, or license checks. The desktop app (Douzy) described below is an upstream product.
+
 ## Desktop App (Douzy)
 
 A desktop GUI built on the same backend, with dedicated workspaces for Douyin, TikTok, and YouTube. Paste a link to start, sync account content, follow every task, and manage downloaded works in a local archive.
@@ -82,7 +84,7 @@ _Screenshots were captured from the current desktop `main` build. Demonstration 
 
 ### 1) Requirements
 
-- Python 3.8+
+- Python 3.9+
 - macOS / Linux / Windows
 
 ### 2) Install dependencies

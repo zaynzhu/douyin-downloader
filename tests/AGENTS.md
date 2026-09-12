@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-27 | Updated: 2026-03-27 -->
+<!-- Generated: 2026-03-27 | Updated: 2026-09-12 -->
 
 # tests
 
 ## Purpose
-Pytest test suite with 23 test modules covering all major components. Uses `pytest-asyncio` for async test support.
+Pytest test suite with 65 test modules covering all major components. Uses `pytest-asyncio` for async test support.
 
 ## Key Files
 
@@ -33,6 +33,8 @@ Pytest test suite with 23 test modules covering all major components. Uses `pyte
 | `test_user_mode_strategies.py` | Individual strategy behavior |
 | `test_video_downloader.py` | Video and gallery downloads |
 | `test_xbogus.py` | Anti-bot signature generation |
+
+> 上表仅列早期核心模块；完整清单以 `ls tests/test_*.py` 为准。
 
 ## For AI Agents
 

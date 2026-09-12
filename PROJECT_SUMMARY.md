@@ -1,5 +1,7 @@
 # 项目实现总结（dy-downloader）
 
+> ⚠️ **归档说明（2026-09-12）**：本文件为 2026-02-18 的历史快照，部分描述已过时（例如"SQLite 不参与增量跳过判断"已被磁盘 + 数据库双重检查取代，测试规模也已大幅增长）。最新状态见 `docs/analysis/2026-09-12-current-state.md`。
+
 ## 1. 项目概览
 
 - **项目名称**: Douyin Downloader (`dy-downloader`)
