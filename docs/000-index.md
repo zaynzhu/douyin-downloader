@@ -19,6 +19,7 @@ docs/
 | `analysis/2026-09-12-reference-projects.md` | 四个参考项目（F2 / TikTokDownloader / res-downloader / 上游 Douzy）调研，含 License 约束 | 做新功能前查"是否已有成熟方案可借鉴" |
 | `analysis/2026-09-12-roadmap.md` | 三阶段路线图，含每条建议的正反辩证、验收标准、触发条件与待用户决策项 | 选择下一步任务、理解"为什么是这个顺序" |
 | `analysis/2026-09-12-intake-report.md` | 接手时终端交付报告的原始快照（12 项分析 + 三阶段路线的原始版本） | 追溯当时的原始判断与措辞；维护以另外三份文档为准 |
+| `analysis/2026-09-12-desktop-evaluation.md` | 桌面端（Desktop App）评估：为什么默认不做、三个翻案触发条件、真做时的路线排序 | 未来纠结"要不要桌面端"时先读它，不要重新推导 |
 
 ## 使用约定
 
