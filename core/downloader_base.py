@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -237,6 +238,26 @@ class BaseDownloader(ABC):
         pass
 
     async def _should_download(self, aweme_id: str, *, force: bool = False) -> bool:
+        """增量判定的唯一真相源（single source of truth）。
+
+        五步规则按序短路：
+        1. ``force``（``increase[mode]=false`` 强制重下）→ 恒下载；
+        2. 磁盘主媒体索引命中 → 跳过。索引在首次判定时对下载根目录做
+           一次全量 rglob：文件须非空、后缀在媒体集合内、且非
+           ``_cover/_avatar/_music`` 边车（边车不算主媒体，否则补视频
+           档的机会会被误跳过）；
+        3. ``redownload_missing_files=true``（默认）或未接数据库 → 下载。
+           默认口径下 SQLite 历史不参与跳过判断——删掉本地文件即重下；
+        4. 数据库 ``is_downloaded``（要求 file_path 非空）兜底 → 跳过；
+        5. 数据库查询失败 → 宁可补下。历史库只是可选兜底，状态不明时
+           绝不能把作品永久误判为已下载。
+
+        每个 downloader 实例（= 每个 job）各自持一份磁盘快照、只在首次
+        判定时扫描一次（线程内，见 _ensure_local_aweme_index）：下一个
+        job 必须重扫，才能看见本 job 之外的磁盘变化（用户删文件、其他
+        进程的下载）。因此这里刻意不做进程级共享索引——新鲜度优先于
+        扫描成本，该契约由 test_downloader_base_perf 锁定。
+        """
         if force:
             return True
 
@@ -304,6 +325,7 @@ class BaseDownloader(ABC):
     def _build_local_aweme_index(self):
         base_path = self.file_manager.base_path
         aweme_ids: set[str] = set()
+        started = time.monotonic()
 
         if base_path.exists():
             for path in base_path.rglob("*"):
@@ -324,6 +346,21 @@ class BaseDownloader(ABC):
                     continue
                 for match in self._aweme_id_pattern.finditer(path.name):
                     aweme_ids.add(match.group(1))
+
+        elapsed = time.monotonic() - started
+        # 扫描成本可观测：大库用户能看见"启动后第一次判重为什么慢"。
+        logger.info(
+            "Local media index built: %d aweme id(s) in %.2fs (%s)",
+            len(aweme_ids),
+            elapsed,
+            base_path,
+        )
+        if elapsed > 5.0:
+            logger.warning(
+                "Local media index scan took %.1fs — consider archiving old "
+                "downloads or trimming the download root",
+                elapsed,
+            )
 
         self._local_aweme_ids = aweme_ids
 

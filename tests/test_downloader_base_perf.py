@@ -223,6 +223,24 @@ async def test_mark_before_index_build_stays_within_current_job(tmp_path):
     await api_b.close()
 
 
+@pytest.mark.asyncio
+async def test_local_index_build_is_observable(tmp_path, caplog):
+    """索引构建必须可观测：INFO 报命中数与耗时——大库用户才能知道
+    "启动后第一次判重为什么慢"，而不是以为程序卡死。"""
+    media = tmp_path / "author" / "post"
+    media.mkdir(parents=True)
+    (media / "2026-01-01_title_7346971177114611003.mp4").write_bytes(b"x")
+
+    downloader, api = _build_downloader(tmp_path)
+    with caplog.at_level("INFO", logger="BaseDownloader"):
+        assert downloader._is_locally_downloaded("7346971177114611003") is True
+
+    assert "Local media index built" in caplog.text
+    assert "1 aweme id" in caplog.text
+
+    await api.close()
+
+
 # ---------------------------------------------------------------------------
 # 2b. 本地索引扫描不得阻塞事件循环
 # ---------------------------------------------------------------------------
