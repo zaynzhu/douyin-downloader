@@ -37,10 +37,19 @@ dy_downloader.db
 *.db
 *.sqlite
 *.sqlite3
-
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+.runtime/
 # Local config/secrets
 config*.yml
 !config.example.yml
+config*.yaml
+!config.example.yaml
+*.env
+*cookies*.json
 .cookies.json
 config/cookies.json
 .omx/
