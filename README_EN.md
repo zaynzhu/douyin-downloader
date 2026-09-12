@@ -368,6 +368,15 @@ pip install fastapi uvicorn       # one-time optional dep
 python run.py --serve --serve-port 8000
 ```
 
+### Web UI
+
+Open `http://127.0.0.1:8000` after the server starts for the self-hosted web UI (pure static frontend served by FastAPI, no Node build chain):
+
+- **Download** — paste share links or the whole share text; links are auto-detected, deduped and submitted one by one
+- **Jobs** — live task center: five states (pending/running/success/failed/cancelled), cancel & retry, progress counters
+- **History** — download history with author/title search, type/date/job filters, pagination, file location
+- **Settings** — server status & health check; cookie hint with the fix command (no in-page config writing in this edition)
+
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/v1/download` | Submit `{"url": "..."}`, returns `{job_id, status}` |
