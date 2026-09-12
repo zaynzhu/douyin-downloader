@@ -172,3 +172,4 @@ run.py → cli/main.py:main() → asyncio.run(main_async)
 | 2026-09-12 | 短期 #1 git 卫生（.gitignore 边车/泛化敏感规则 + run.sh 入库） | 2b6f422、7b368e9 |
 | 2026-09-12 | 短期 #3 文档口径统一 + roadmap D1 双仓条款按默认建议修订 | d65d6b2、95b8462 |
 | 2026-09-12 | 短期 #4 最小 CI 补齐 | 249746e |
+| 2026-09-12 | 中期 #1-#4 完成：本快照 §3.4/§7 所列问题大部分闭合——三处编排复制收敛至 `core/download_service.py`（server 不写库的漂移随之消除）、`job` 表已接线（持久化/重启恢复/CANCELLED 状态机对齐）、cancel/retry/历史查询端点已上线。快照正文保留原貌，后续以 roadmap 变更记录为准 | e32aa81、8b44b50、6610626、5f4b752、4c5e0e1 |

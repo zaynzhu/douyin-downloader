@@ -4,7 +4,7 @@
 # tests
 
 ## Purpose
-Pytest test suite with 65 test modules covering all major components. Uses `pytest-asyncio` for async test support.
+Pytest test suite with 69 test modules covering all major components. Uses `pytest-asyncio` for async test support.
 
 ## Key Files
 
