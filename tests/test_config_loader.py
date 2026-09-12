@@ -331,3 +331,74 @@ increase: {increase_cfg}
         assert any("mix/allmix conflict" in message for message in warning_logs)
     else:
         assert not any("mix/allmix conflict" in message for message in warning_logs)
+
+
+# ---------------------------------------------------------------------------
+# data_root 平移地基（长期 #2：Docker 单卷部署的配置层支撑）
+# ---------------------------------------------------------------------------
+
+
+def _write_config_file(tmp_path, content: str) -> str:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(content, encoding="utf-8")
+    return str(config_path)
+
+
+def test_data_root_relocates_default_path_and_database(tmp_path):
+    config_path = _write_config_file(tmp_path, "data_root: /data\n")
+
+    loader = ConfigLoader(config_path)
+
+    assert loader.get("path") == "/data/downloads"
+    assert loader.get("database_path") == "/data/database/dy_downloader.db"
+
+
+def test_data_root_ignored_when_unset(tmp_path):
+    config_path = _write_config_file(tmp_path, "thread: 3\n")
+
+    loader = ConfigLoader(config_path)
+
+    assert loader.get("path") == "./Downloaded/"
+    assert loader.get("database_path") == "dy_downloader.db"
+    assert loader.get("data_root") == ""
+
+
+def test_explicit_path_and_database_win_over_data_root(tmp_path):
+    config_path = _write_config_file(
+        tmp_path, "data_root: /data\npath: /custom/dir\ndatabase_path: custom.db\n"
+    )
+
+    loader = ConfigLoader(config_path)
+
+    assert loader.get("path") == "/custom/dir"
+    assert loader.get("database_path") == "custom.db"
+
+
+def test_relative_data_root_resolves_against_config_dir(tmp_path):
+    config_path = _write_config_file(tmp_path, "data_root: ./mydata\n")
+
+    loader = ConfigLoader(config_path)
+
+    expected_root = (tmp_path / "mydata").resolve()
+    assert loader.get("path") == str(expected_root / "downloads")
+    assert loader.get("database_path") == str(expected_root / "database" / "dy_downloader.db")
+
+
+def test_env_data_root_relocates_defaults(monkeypatch):
+    monkeypatch.setenv("DOUYIN_DATA_ROOT", "/env-data")
+
+    loader = ConfigLoader(None)
+
+    assert loader.get("path") == "/env-data/downloads"
+    assert loader.get("database_path") == "/env-data/database/dy_downloader.db"
+
+
+def test_env_explicit_path_wins_over_env_data_root(monkeypatch):
+    monkeypatch.setenv("DOUYIN_DATA_ROOT", "/env-data")
+    monkeypatch.setenv("DOUYIN_PATH", "/explicit-path")
+
+    loader = ConfigLoader(None)
+
+    assert loader.get("path") == "/explicit-path"
+    # database_path 未显式指定，仍由 data_root 落位
+    assert loader.get("database_path") == "/env-data/database/dy_downloader.db"

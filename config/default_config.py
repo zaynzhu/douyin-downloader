@@ -2,6 +2,11 @@ from typing import Any, Dict
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "path": "./Downloaded/",
+    # 数据根目录（平移地基，默认关闭）：设置后未显式配置的
+    # path / database_path 自动落位于 <data_root>/downloads 与
+    # <data_root>/database。服务未来 Docker 单卷部署
+    # （./data:/data + DOUYIN_DATA_ROOT=/data）。
+    "data_root": "",
     # 处理内容开关：默认只保存视频本体。封面 / 音乐 / 头像 / 作品 JSON 都是
     # 附带产物，绝大多数用户并不需要，默认全开会平白多出几倍文件和请求。
     # 只影响新配置；已有 config.yml 里显式写过的值不受影响。

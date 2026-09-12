@@ -3,6 +3,12 @@ link:
 
 path: ./Downloaded/
 
+# 数据根目录（可选，默认关闭）。设置后，未显式配置的 path 与 database_path
+# 会自动落位于 <data_root>/downloads 与 <data_root>/database。
+# 主要为未来 Docker 单卷部署准备（./data:/data + 环境变量 DOUYIN_DATA_ROOT=/data）。
+# 显式写 path / database_path 时以显式值为准。
+# data_root: /data
+
 # 是否下载视频文件；关闭后仍可按下方开关保存原始封面、音乐、头像或 JSON。
 # 默认只保存视频本体，其余附带产物按需打开。
 video: true

@@ -387,6 +387,7 @@ With `database: true`, terminal jobs (success / failed / cancelled) are persiste
 
 | Field | Description |
 |-------|-------------|
+| `data_root` | Optional data root: when set, non-explicit `path` / `database_path` relocate to `<data_root>/downloads` and `<data_root>/database` (env var `DOUYIN_DATA_ROOT` supported) |
 | `mode` | `post` / `like` / `mix` / `music`; favorites modes additionally support standalone `collect` / `collectmix` |
 | `number.post/like/mix/music/...` | Per-mode download limit, 0 = unlimited |
 | `increase.post/like/mix/music` | `true`: skip existing primary media on disk; `false`: force redownload within current scope |

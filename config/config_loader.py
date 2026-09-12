@@ -35,7 +35,44 @@ class ConfigLoader:
             config = self._merge_config(config, env_config)
             override_sources.append(env_config)
 
+        config = self._apply_data_root(config, override_sources)
         return self._normalize_mix_aliases(config, override_sources)
+
+    def _apply_data_root(
+        self, config: Dict[str, Any], override_sources: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """data_root 平移地基：设置后，未显式配置的 path / database_path
+        落位于 ``<data_root>/downloads`` 与 ``<data_root>/database``。
+
+        显式配置（YAML 或环境变量）优先于 data_root 缺省——想自定义
+        path 就明确写 path。相对 data_root 相对配置文件所在目录解析。
+        主要服务未来 Docker 单卷部署（``./data:/data`` +
+        ``DOUYIN_DATA_ROOT=/data``），见 docs/analysis 路线图长期 #2。
+        """
+        root_raw = config.get("data_root")
+        root = str(root_raw).strip() if root_raw else ""
+        if not root:
+            return config
+
+        root_path = Path(root).expanduser()
+        if not root_path.is_absolute():
+            base_dir = (
+                Path(self.config_path).resolve().parent if self.config_path else Path.cwd()
+            )
+            root_path = base_dir / root_path
+
+        explicit = {
+            key
+            for source in override_sources
+            if isinstance(source, dict)
+            for key in ("path", "database_path")
+            if key in source
+        }
+        if "path" not in explicit:
+            config["path"] = str(root_path / "downloads")
+        if "database_path" not in explicit:
+            config["database_path"] = str(root_path / "database" / "dy_downloader.db")
+        return config
 
     def _merge_config(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         result = base.copy()
@@ -62,6 +99,8 @@ class ConfigLoader:
                 )
         if os.getenv("DOUYIN_PROXY"):
             env_config["proxy"] = os.getenv("DOUYIN_PROXY")
+        if os.getenv("DOUYIN_DATA_ROOT"):
+            env_config["data_root"] = os.getenv("DOUYIN_DATA_ROOT")
         return env_config
 
     def _normalize_mix_aliases(

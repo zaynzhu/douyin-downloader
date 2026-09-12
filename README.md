@@ -386,6 +386,7 @@ python run.py --serve --serve-port 8000
 
 | 字段 | 说明 |
 |------|------|
+| `data_root` | 可选数据根目录：设置后未显式配置的 `path` / `database_path` 落位于 `<data_root>/downloads` 与 `<data_root>/database`（支持环境变量 `DOUYIN_DATA_ROOT`） |
 | `mode` | `post` / `like` / `mix` / `music`；登录收藏模式额外支持独立的 `collect` / `collectmix` |
 | `number.post/like/mix/music/...` | 各模式下载数量上限，0 表示不限 |
 | `increase.post/like/mix/music` | `true`：磁盘已有主媒体则跳过；`false`：在当前范围内强制重下 |
