@@ -124,11 +124,14 @@ async def test_remux_timeout_kills_reaps_and_removes_partial_output(monkeypatch,
 
     monkeypatch.setattr("core.live_replay_downloader.asyncio.create_subprocess_exec", fake_create)
 
+    # 外层安全网须远大于内层超时（0.01s）：若事件循环被系统停顿卡满外层时长，
+    # 内外两个定时器会在同一次唤醒里双重 cancel 同一任务，asyncio.timeouts 的
+    # uncancel() 簿记会失配、内层 TimeoutError 不再被转换，导致用例闪烁。
     result = await asyncio.wait_for(
         downloader._remux_tracks(
             tmp_path / "video.mp4", tmp_path / "audio.mp4", tmp_path / "replay.mp4"
         ),
-        timeout=1.0,
+        timeout=5.0,
     )
 
     assert result is False
