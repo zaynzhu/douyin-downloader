@@ -4,6 +4,5 @@ Read `AGENTS.md` for the full project rules.
 
 ## Shared Logic With Desktop
 
-- This project shares Python backend logic with `/Users/crimson/codes/douyin/douyin-downloader-desktop`.
-- When fixing shared logic in `auth/`, `cli/`, `config/`, `control/`, `core/`, `storage/`, `tools/`, `utils/`, or shared tests, apply the equivalent fix in both projects unless the difference is explicitly desktop-only or CLI-only.
-- Before finishing a shared-logic fix, compare the touched shared files against the sibling project and either keep them identical or document the intentional divergence.
+- This fork is maintained **independently**; the upstream sibling repo (`douyin-downloader-desktop`) is not present in this environment. Do not treat it as a sync target and do not run the historical `sync-to-cli.sh` workflow.
+- Fixes to shared modules (`auth/`, `cli/`, `config/`, `control/`, `core/`, `storage/`, `tools/`, `utils/`, shared tests) stay in this repo. Significant general fixes may still be offered back upstream manually (PR / cherry-pick); nothing requires it.

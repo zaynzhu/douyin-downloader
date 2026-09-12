@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-27 | Updated: 2026-05-08 -->
+<!-- Generated: 2026-03-27 | Updated: 2026-09-12 -->
 
 # douyin-downloader
 
@@ -27,25 +27,24 @@ A Python-based Douyin (TikTok China) batch downloader that fetches videos, galle
 | `control/` | Concurrency control — rate limiter, retry handler, queue manager (see `control/AGENTS.md`) |
 | `core/` | Business logic — API client, URL parser, downloaders, strategy pattern (see `core/AGENTS.md`) |
 | `storage/` | SQLite database, file management, metadata handling (see `storage/AGENTS.md`) |
-| `tests/` | Pytest test suite with 23 test modules (see `tests/AGENTS.md`) |
+| `tests/` | Pytest test suite with 65 test modules (see `tests/AGENTS.md`) |
 | `tools/` | Standalone utilities like browser-based cookie fetching (see `tools/AGENTS.md`) |
 | `utils/` | Shared helpers — logging, validation, anti-bot signatures (see `utils/AGENTS.md`) |
 
 ## For AI Agents
 
 ### Working In This Directory
-- Python 3.8+ compatibility required — avoid walrus operator, `match` statements, and `type` aliases
+- Python 3.9+ is the declared floor (`pyproject.toml`); local dev and CI run 3.12. Keep conservative 3.8-era syntax in shared modules (no walrus, no `match`, no `type` aliases) to minimize upstream merge conflicts — do not modernize untouched code
 - All I/O is async (`aiohttp`, `aiofiles`, `aiosqlite`) — never use blocking I/O in core paths
 - Entry point is `cli.main:main()` which calls `asyncio.run(main_async(args))`
 - Config is YAML-based with env var overrides (`DOUYIN_*` prefix)
 - The `mix`/`allmix` config alias system requires special handling (see `config/config_loader.py`)
 
 ### Shared Logic With Desktop
-- This project shares Python backend logic with `/Users/crimson/codes/douyin/douyin-downloader-desktop`.
-- When fixing shared logic in `auth/`, `cli/`, `config/`, `control/`, `core/`, `storage/`, `tools/`, `utils/`, or shared tests, apply the equivalent fix in both projects unless the difference is explicitly desktop-only or CLI-only.
-- Before finishing a shared-logic fix, compare the touched shared files against the sibling project and either keep them identical or document the intentional divergence.
-- **Sync script:** `../douyin-downloader-desktop/scripts/sync-to-cli.sh` copies all shared files from the desktop project here. Run `--check` to detect drift.
-- **Intentional divergences** (these files differ by design):
+- This fork is maintained **independently**; the upstream sibling repo (`douyin-downloader-desktop`) is not present in this environment. Do not treat it as a sync target and do not run the historical `sync-to-cli.sh` workflow.
+- Fixes to shared modules (`auth/`, `cli/`, `config/`, `control/`, `core/`, `storage/`, `tools/`, `utils/`, shared tests) stay in this repo. Significant general fixes may still be offered back upstream manually (PR / cherry-pick); nothing requires it.
+- The divergence list below is retained as historical context for why these files differ from the upstream desktop variant.
+- **Intentional divergences** (historical context, these files differ by design):
   - `cli/main.py` — CLI omits desktop-only `_verify_self_checksum()` and `_enforce_license_at_startup()`.
   - `run.py` — CLI is a simple bootstrap; desktop has sidecar startup + data-dir migration.
   - `server/app.py`, `server/jobs.py` — CLI server is a simplified subset; desktop adds license, SSE, overrides, cancel.
